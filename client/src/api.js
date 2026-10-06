@@ -49,6 +49,17 @@ export const api = {
   editListing: (id, b) => call('PATCH', `/api/products/${id}/listing`, b),
   syncSales: () => call('POST', '/api/sales/sync', {}),
   sales: () => call('GET', '/api/sales'),
+  // M4: blocklist, print rule, batches
+  blocklist: () => call('GET', '/api/blocklist'),
+  blocklistAdd: (term, kind) => call('POST', '/api/blocklist', { term, kind }),
+  blocklistRemove: (term) => call('DELETE', `/api/blocklist?term=${encodeURIComponent(term)}`),
+  blocklistImport: (text, kind) => call('POST', '/api/blocklist/import', { text, kind }),
+  blocklistCheck: (text) => call('POST', '/api/blocklist/check', { text }),
+  batches: () => call('GET', '/api/batch'),
+  batch: (id) => call('GET', `/api/batch/${id}`),
+  runBatch: (b) => call('POST', '/api/batch', b),
+  cancelBatch: (id) => call('POST', `/api/batch/${id}/cancel`, {}),
+  resumeBatch: (id) => call('POST', `/api/batch/${id}/resume`, {}),
 };
 
 export const dollars = (cents) => (cents === null || cents === undefined ? '-' : `${cents < 0 ? '-' : ''}$${(Math.abs(cents) / 100).toFixed(2)}`);

@@ -9,6 +9,8 @@ import ConfirmModal from './components/ConfirmModal.jsx';
 import { makeWatchApi } from './components/watch/watchApi.js';
 import WatchPanel from './components/watch/WatchPanel.jsx';
 import SalesView from './components/SalesView.jsx';
+import BatchDialog from './components/BatchDialog.jsx';
+import BatchesView from './components/BatchesView.jsx';
 import PlaybooksView from './components/playbooks/PlaybooksView.jsx';
 
 export default function App() {
@@ -17,9 +19,11 @@ export default function App() {
   const [error, setError] = useState('');
   const [drawer, setDrawer] = useState(false);
   const [composer, setComposer] = useState(false);
+  const [batchDialog, setBatchDialog] = useState(false);
+  const [batchFocus, setBatchFocus] = useState(null);
   const [openId, setOpenId] = useState(null);
   const watchApi = useMemo(() => makeWatchApi(), []);
-  const [view, setView] = useState('board'); // 'board' | 'sales' | 'watch' | 'playbooks'
+  const [view, setView] = useState('board'); // 'board' | 'batches' | 'sales' | 'watch' | 'playbooks'
   const [flash, setFlash] = useState(''); // outcome of an Etsy connect round-trip (?etsy=...)
   const [pb, setPb] = useState({ id: null, productId: 0 });
   const [confirm, setConfirm] = useState(null); // {summary, phrase?, run(token, typed)}
@@ -57,18 +61,20 @@ export default function App() {
 
   return (
     <div className="app">
-      <TopBar summary={summary} onToggleDryRun={toggleDryRun} onSettings={() => setDrawer(true)} onNew={() => setComposer(true)}
+      <TopBar summary={summary} onToggleDryRun={toggleDryRun} onSettings={() => setDrawer(true)} onNew={() => setComposer(true)} onBatch={() => setBatchDialog(true)}
         view={view} onView={setView} watchApi={watchApi}
         onOpenPlaybook={(id, productId) => { setPb({ id, productId: productId || 0 }); setView('playbooks'); }} />
       {error && <div className="banner error" role="alert">{error}</div>}
       {flash && <div className="banner warn-banner" role="status">{flash} <button className="ghost" onClick={() => setFlash('')}>Dismiss</button></div>}
       {view === 'board' && <Board board={board} onOpen={setOpenId} />}
+      {view === 'batches' && <BatchesView focusId={batchFocus} onOpenProduct={setOpenId} onChanged={refresh} />}
       {view === 'sales' && <SalesView onChanged={refresh} />}
       {view === 'watch' && <WatchPanel api={watchApi} />}
       {view === 'playbooks' && <PlaybooksView api={watchApi} initialId={pb.id} initialProductId={pb.productId}
         products={board ? Object.values(board.columns).flat().map(p => ({ id: p.id, title: p.title })) : []} />}
       {drawer && <SettingsDrawer onClose={() => { setDrawer(false); refresh(); }} askConfirm={setConfirm} />}
       {composer && <Composer onClose={() => { setComposer(false); refresh(); }} onChanged={refresh} onOpen={(id) => { setComposer(false); setOpenId(id); }} />}
+      {batchDialog && <BatchDialog onClose={() => setBatchDialog(false)} onStarted={(id) => { setBatchDialog(false); setBatchFocus(id); setView('batches'); refresh(); }} />}
       {openId !== null && <ProductDrawer id={openId} onClose={() => { setOpenId(null); refresh(); }} onChanged={refresh} askConfirm={setConfirm} />}
       {confirm && <ConfirmModal {...confirm} onClose={() => setConfirm(null)} />}
     </div>

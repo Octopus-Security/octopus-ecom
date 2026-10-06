@@ -158,11 +158,11 @@ function createEtsy({ http, etsyAuth, log = console, env = {} } = {}) {
     },
 
     /**
-     * getReceipts(storeId, {sinceTs, maxPages}) -> {receipts:[{receiptId, createdTs, isPaid, refunds, processingFeeCents|null, transactions:[...]}],
+     * getReceipts(storeId, {sinceTs, maxPages, skipFeeFor}) -> {receipts:[{receiptId, createdTs, isPaid, refunds, refundList:[{amountCents,createdTs,reason,status}], processingFeeCents|null, transactions:[...]}],
      *   complete, maxCreated, requests}
      * Paid receipts oldest first. `complete:false` = the page cap was hit; the caller resumes from maxCreated.
      */
-    async getReceipts(storeId, { sinceTs = 0, maxPages = 20, withFees = true } = {}) {
+    async getReceipts(storeId, { sinceTs = 0, maxPages = 20, withFees = true, skipFeeFor = null } = {}) {
       const shop = shopOf(storeId);
       const receipts = []; let offset = 0; let complete = false; let pages = 0; let maxCreated = sinceTs || 0;
       while (pages < maxPages) {
@@ -173,7 +173,10 @@ function createEtsy({ http, etsyAuth, log = console, env = {} } = {}) {
           const createdTs = x.created_timestamp || x.create_timestamp || 0;
           maxCreated = Math.max(maxCreated, createdTs);
           receipts.push({
-            receiptId: String(x.receipt_id), createdTs, isPaid: x.is_paid !== false, refunds: (x.refunds || []).length, currency: x.grandtotal && x.grandtotal.currency_code || null,
+            receiptId: String(x.receipt_id), createdTs, isPaid: x.is_paid !== false, refunds: (x.refunds || []).length,
+            // ShopRefund {amount Money, created_timestamp, reason, note_from_issuer, status} - verified 2026-10-05, oas 3.0.0.json: it has NO id field.
+            refundList: (x.refunds || []).map(rf => ({ amountCents: cents(rf.amount), createdTs: rf.created_timestamp || 0, reason: rf.reason || null, status: rf.status || null })),
+            currency: x.grandtotal && x.grandtotal.currency_code || null,
             processingFeeCents: null,
             transactions: (x.transactions || []).map(t => ({ transactionId: String(t.transaction_id), listingId: t.listing_id ? String(t.listing_id) : null, quantity: t.quantity || 1, unitCents: cents(t.price), shippingCents: cents(t.shipping_cost), title: t.title || null })),
           });
@@ -184,6 +187,7 @@ function createEtsy({ http, etsyAuth, log = console, env = {} } = {}) {
       let requests = pages;
       if (withFees) {
         for (const x of receipts) {
+          if (skipFeeFor && skipFeeFor.has(x.receiptId)) continue; // already ingested: re-read only to see refunds, not to re-fetch its fee
           try {
             const p = await call(storeId, 'GET', `/v3/application/shops/${shop}/receipts/${num(x.receiptId, 'receipt id')}/payments`);
             requests++;

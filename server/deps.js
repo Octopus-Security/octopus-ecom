@@ -23,6 +23,7 @@ const { makeEtsyAuth } = require('./etsy/auth');
 const { makeEtsyService } = require('./etsy/service');
 const { makePublisher } = require('./etsy/publish');
 const { makeSales } = require('./etsy/sales');
+const { makeOrchestrator } = require('./orchestrator');
 
 function createDeps(cfg, opts = {}) {
   const { secret, env = process.env, dbFile, out, authOptions, requireFn, now, upscale } = opts;
@@ -38,7 +39,7 @@ function createDeps(cfg, opts = {}) {
   http = http || makeHttp({ log, hostLimits: { 'api.etsy.com': { ratePerSec: qps, perDay: qpd } } });
   const settings = makeSettings(db);
   seedSettings(settings, cfg);
-  seedBlocklist(db);
+  seedBlocklist(db, settings);
   const confirm = makeConfirm({ now });
   const dryRun = makeDryRun({ db, settings, confirm });
   const spend = makeSpend({ db, settings });
@@ -47,12 +48,13 @@ function createDeps(cfg, opts = {}) {
   const llm = makeLlm({ cfg, credentials, http, spend, log, env, requireFn });
   const etsyAuth = makeEtsyAuth({ db, keystore, credentials, http, cfg, log, now: opts.nowMs });
   const adapters = buildAdapters({ cfg, env, credentials, keystore, isDryRun: dryRun.isOn, log, llm, http, spend, upscale, etsyAuth });
-  const pipeline = makePipeline({ db, stages, adapters, spend, settings, dataDir: cfg.dataDir, isDryRun: dryRun.isOn, log });
+  const pipeline = makePipeline({ db, stages, adapters, spend, settings, dataDir: cfg.dataDir, isDryRun: dryRun.isOn, log, printDefaults: cfg.print });
   const etsy = makeEtsyService({ db, auth: etsyAuth, adapters, credentials, log, now: opts.nowMs });
   const publisher = makePublisher({ db, stages, adapters, pipeline, spend, dryRun, etsy, log, env, sleep: opts.sleep });
-  const sales = makeSales({ db, adapters, spend, etsy, log, now: opts.nowMs });
+  const sales = makeSales({ db, adapters, spend, etsy, log, now: opts.nowMs, lookbackDays: cfg.refundLookbackDays });
+  const orchestrator = makeOrchestrator({ db, pipeline, stages, adapters, llm, spend, settings, publisher, dryRun, cfg, log, now: opts.nowDate });
   const watch = makeWatchService({ db, settings, adapters, log, env, hooks: { reconcile: () => publisher.reconcileAll({ actor: 'agent' }), syncSales: () => sales.sync({ actor: 'agent', auto: true }) } });
-  return { etsyAuth, etsy, publisher, sales, watch, pipeline, http, cfg, db, keystore, credentials, redactor, log, settings, confirm, dryRun, spend, stages, auth, llm, adapters };
+  return { orchestrator, etsyAuth, etsy, publisher, sales, watch, pipeline, http, cfg, db, keystore, credentials, redactor, log, settings, confirm, dryRun, spend, stages, auth, llm, adapters };
 }
 
 module.exports = { createDeps };

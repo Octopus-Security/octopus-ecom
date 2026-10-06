@@ -27,13 +27,23 @@ npm test     # node:test, no network, no keys
 
 Operator playbooks (checklists for margin drops, stock-outs, etc.) live in `docs/playbooks/`; they are generated from `server/playbooks/definitions.js`.
 
+## First run, end to end (no keys)
+
+1. `npm install && npm start`, open http://127.0.0.1:3050. The top bar shows **DRY RUN: ON**.
+2. **New product** (or **Run batch**): pick the stub "Unisex Tee", a price, and generate. The stub makes a placeholder design at the full print
+   size, a placeholder mockup and copy, and a projected margin on an *estimated* base cost.
+3. Open the card, **Submit for approval**, then **Approve...** (a summary lists price, margin and any flags). Publishing is only simulated while
+   DRY_RUN is on. Nothing leaves the machine.
+
+Going live is deliberate and step by step (see `ARCHITECTURE.md`): add keys in Settings (OpenAI for real images and copy, Printify, Etsy app
+credentials), connect Etsy, arm live writes (typed phrase), re-run "create POD product" to read the real cost, approve, publish.
+
+**Batches:** *Run batch* takes a niche and a count (max 25), proposes original concepts, and takes each product to PENDING_APPROVAL, then
+stops. It pauses when the daily spend cap is reached and survives a restart. **Blocklist** and the **print-readiness rule** are in Settings.
+**Legal/policy assumptions** and what is not verified: `docs/COMPLIANCE.md`.
+
 ## Status
 
-Milestone M3: everything from M2 plus the real Etsy Open API v3 adapter (OAuth2 + PKCE connect
-from Settings -> Stores, token refresh, listing edits, receipt ingest), the Printify -> Etsy publish
-path (confirm-gated, refused unless every precondition holds), reconcile to `live`, per-sale COGS and
-NET from real receipts. Etsy and publishing only go real with Etsy app credentials, a connected
-shop and DRY_RUN off; otherwise everything is stubbed and a publish is only simulated.
-The batch orchestrator and print-readiness check are M4. Generation is real with an OpenAI key
-(BYOK, daily cap) even in dry-run; otherwise stubbed. See `ARCHITECTURE.md` (including the exact
-steps to register the Etsy app and connect).
+All milestones (M0-M4) are built; the Etsy path has never been run against a live shop (it is tested against fakes built from Etsy's
+published OpenAPI document). Generation is real with an OpenAI key (BYOK, daily cap) even in dry-run; otherwise stubbed. Known gaps are
+listed under "Not yet built" in `ARCHITECTURE.md`.

@@ -26,7 +26,8 @@
  */
 const path = require('node:path');
 const { S, parseFlags } = require('./domain/stages');
-const { checkBlocklist } = require('./domain/blocklist');
+const { scanFields, describeHits } = require('./domain/blocklist');
+const printReadiness = require('./domain/print-readiness');
 const { enforceCopy } = require('./domain/etsy-rules');
 const { designPrompt } = require('./domain/prompts');
 const { productEvent } = require('./events');
@@ -58,6 +59,11 @@ function validateInput(b = {}, { partial = false } = {}) {
     if (!Number.isFinite(n) || n < 0 || n > 10000) throw new PipelineError('listPrice must be dollars between 0 and 10000');
     out.listPriceCents = Math.round(n * 100);
   }
+  if (b.shipping !== undefined && b.shipping !== null && b.shipping !== '') {
+    const n = Number(b.shipping);
+    if (!Number.isFinite(n) || n < 0 || n > 10000) throw new PipelineError('shipping must be dollars between 0 and 10000');
+    out.shippingCents = Math.round(n * 100);
+  }
   if (b.blueprint !== undefined) out.blueprint = clean(b.blueprint, 100, 'blueprint') || null;
   if (b.printProviderId !== undefined) out.printProviderId = clean(b.printProviderId, 100, 'printProviderId') || null;
   return out;
@@ -72,7 +78,7 @@ function primaryArea(p) {
 }
 const baseTitle = p => (p.title || p.brief || `Product ${p.id}`).slice(0, 120);
 
-function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun = () => true, log = console }) {
+function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun = () => true, log = console, printDefaults = {} }) {
   const busy = new Set();
   const get = id => db.prepare('SELECT * FROM products WHERE id = ?').get(id);
   const need = id => { const p = get(Number(id)); if (!p) throw new PipelineError(`Product ${id} not found`, 404, 'not_found'); return p; };
@@ -92,6 +98,56 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
     db.prepare('UPDATE products SET flags = ? WHERE id = ?').run(JSON.stringify(flags), productId);
   }
 
+  // ---- M4: print-readiness -------------------------------------------------------------------------------
+  /** The active rule: a panel override (settings) wins over the env defaults handed in by deps (PRINT_MIN_COVERAGE, PRINT_FIT). */
+  function printRule() {
+    const mc = settings ? Number(settings.get('print_min_coverage', '')) : NaN;
+    const fit = settings ? settings.get('print_fit', '') : '';
+    return {
+      minCoverage: printReadiness.validMinCoverage(mc) ? mc : (printReadiness.validMinCoverage(printDefaults.minCoverage) ? printDefaults.minCoverage : printReadiness.DEFAULT_MIN_COVERAGE),
+      fit: printReadiness.validFit(fit) ? fit : (printReadiness.validFit(printDefaults.fit) ? printDefaults.fit : 'cover'),
+    };
+  }
+  /** Measure the latest design's true pixels (PNG header) against the product's print_spec. */
+  function checkPrint(id) { return printReadiness.checkProduct({ db, dataDir, product: need(id), ...printRule() }); }
+  const printFlagDetail = r => String(r.reason || 'not print-ready').slice(0, 400);
+  /** At design time: flag early when the answer is definitive (the spec is known and the file readable). Never refuses here. */
+  function earlyPrintFlag(id) {
+    try {
+      const p = get(id);
+      if (!p.print_spec) return;
+      const r = checkPrint(id);
+      if (r.unknown) return;
+      setFlag(id, 'print_not_ready', r.ok ? null : printFlagDetail(r));
+    } catch (e) { log.warn(`[pipeline] print-readiness check failed for product ${id}: ${e.message}`); }
+  }
+
+  /** Add flags, never remove: an existing flag with the same code is kept as it is. Used by the batch QA pass. */
+  function addFlags(id, flags) {
+    const p = get(id);
+    const cur = parseFlags(p);
+    const have = new Set(cur.map(f => f.code));
+    const next = cur.concat(flags.filter(f => f && f.code && !have.has(f.code)).map(f => ({ code: f.code, detail: f.detail, ...(f.source ? { source: f.source } : {}) })));
+    if (next.length !== cur.length) db.prepare('UPDATE products SET flags = ? WHERE id = ?').run(JSON.stringify(next), id);
+    return next;
+  }
+
+  /** Re-run the blocklist over every product that is not finished (after the list was edited). Returns {checked, flagged, cleared}. */
+  function rescanBlocklist() {
+    const rows = db.prepare("SELECT * FROM products WHERE stage NOT IN ('published','live','rejected','archived')").all();
+    let flagged = 0; let cleared = 0;
+    for (const p of rows) {
+      const l = db.prepare("SELECT title, tags, description FROM listings WHERE product_id = ? AND platform = 'etsy' ORDER BY id DESC LIMIT 1").get(p.id);
+      let tags = []; try { tags = JSON.parse((l && l.tags) || '[]'); } catch { tags = []; }
+      const found = scanFields(db, { brief: p.brief, niche: p.niche, keywords: kw(p), title: l && l.title, tags, description: l && l.description });
+      const had = parseFlags(p).some(f => f.code === 'blocklist');
+      setFlag(p.id, 'blocklist', found.length ? describeHits(found) : null);
+      if (found.length && !had) flagged++;
+      if (!found.length && had) cleared++;
+    }
+    return { checked: rows.length, flagged, cleared };
+  }
+
   /** The failure path: spend-cap -> a pause (no stage change); anything else -> `failed` with the reason. */
   function failure(p, err, actor, what) {
     if (err && err.name === 'SpendCapError') {
@@ -107,10 +163,16 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
 
   function create(input, { actor = 'human' } = {}) {
     const v = validateInput(input);
-    const p = stages.createProduct({ brief: v.brief, niche: v.niche, blueprint: v.blueprint || null, printProviderId: v.printProviderId || null, listPriceCents: v.listPriceCents ?? null, actor });
+    let storeId = null;
+    if (input && input.storeId !== undefined && input.storeId !== null && input.storeId !== '') {
+      storeId = Number(input.storeId);
+      if (!Number.isInteger(storeId) || !db.prepare('SELECT 1 FROM stores WHERE id = ?').get(storeId)) throw new PipelineError('storeId does not match a store', 400, 'bad_store');
+    }
+    const p = stages.createProduct({ brief: v.brief, niche: v.niche, storeId, blueprint: v.blueprint || null, printProviderId: v.printProviderId || null, listPriceCents: v.listPriceCents ?? null, shippingCents: v.shippingCents ?? 0, actor });
     if (v.keywords) db.prepare('UPDATE products SET keywords = ? WHERE id = ?').run(JSON.stringify(v.keywords), p.id);
-    const hits = checkBlocklist(db, [v.brief, v.niche, ...(v.keywords || [])]);
-    if (hits.length) setFlag(p.id, 'blocklist', hits.join(', '));
+    // Flag BEFORE any spend: the brief is checked the moment the product exists.
+    const hits = scanFields(db, { brief: v.brief, niche: v.niche, keywords: v.keywords || [] });
+    if (hits.length) { setFlag(p.id, 'blocklist', describeHits(hits)); productEvent(db, p.id, { actor, note: `trademark blocklist hit in the brief: ${describeHits(hits)}` }); }
     return get(p.id);
   }
 
@@ -125,8 +187,8 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
         if (nb !== p.brief) { db.prepare('UPDATE products SET brief = ?, updated_at = ? WHERE id = ?').run(nb, new Date().toISOString(), id); productEvent(db, id, { actor, note: 'brief edited' }); p = get(id); }
       }
       if (!p.brief) throw new PipelineError('The product has no brief');
-      const hits = checkBlocklist(db, [p.brief, p.niche, ...kw(p)]);
-      setFlag(id, 'blocklist', hits.length ? hits.join(', ') : null);
+      const hits = scanFields(db, { brief: p.brief, niche: p.niche, keywords: kw(p) });
+      setFlag(id, 'blocklist', hits.length ? describeHits(hits) : null);
       if (p.stage === S.FAILED) p = stages.transition(id, S.IDEA, { actor, note: 'retry' });
 
       const prompt = designPrompt(p);
@@ -145,6 +207,7 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
                     VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
           .run(id, img.file, prompt, real.width, real.height, gen.costCents, gen.model, t, img.nativeWidth ?? real.width, img.nativeHeight ?? real.height, img.upscaled ? (img.upscaleMethod || 'upscaled') : null);
         db.prepare('UPDATE products SET model_used = ? WHERE id = ?').run(gen.model, id);
+        earlyPrintFlag(id);
         if (p.stage === S.DESIGN) { productEvent(db, id, { actor, note: `design regenerated (${gen.model}, ${real.width}x${real.height})` }); return get(id); }
         return stages.transition(id, S.DESIGN, { actor, note: `design generated (${gen.model}, ${real.width}x${real.height})` });
       } catch (e) { throw failure(p, e, actor, 'saving the design'); }
@@ -176,8 +239,9 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
     const c = enforceCopy(raw);
     if (!c.title) throw new PipelineError('the title is empty after enforcing Etsy rules', 422, 'empty_title');
     const p = get(id);
-    const hits = checkBlocklist(db, [c.title, c.tags.join(' '), c.description, p.brief]);
-    setFlag(id, 'blocklist', hits.length ? hits.join(', ') : null);
+    const found = scanFields(db, { brief: p.brief, title: c.title, tags: c.tags, description: c.description });
+    const hits = found.map(h => h.term);
+    setFlag(id, 'blocklist', found.length ? describeHits(found) : null);
     const t = new Date().toISOString();
     const row = db.prepare("SELECT id FROM listings WHERE product_id = ? AND platform = 'etsy' AND status = 'draft'").get(id);
     if (row) db.prepare('UPDATE listings SET title=?, tags=?, description=?, repairs=?, model=?, price_cents=?, updated_at=? WHERE id=?')
@@ -185,8 +249,8 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
     else db.prepare("INSERT INTO listings(product_id,platform,title,tags,description,price_cents,status,created_at,updated_at,repairs,model) VALUES(?,'etsy',?,?,?,?,'draft',?,?,?,?)")
       .run(id, c.title, JSON.stringify(c.tags), c.description, p.list_price_cents, t, t, JSON.stringify(c.repairs), model);
     db.prepare('UPDATE products SET title = ?, updated_at = ? WHERE id = ?').run(c.title, t, id);
-    productEvent(db, id, { actor, note: `copy ${via}${c.repairs.length ? ` (${c.repairs.length} repair${c.repairs.length === 1 ? '' : 's'})` : ''}${hits.length ? `; blocklist hit: ${hits.join(', ')}` : ''}` });
-    return { product: get(id), repairs: c.repairs, blocklistHits: hits };
+    productEvent(db, id, { actor, note: `copy ${via}${c.repairs.length ? ` (${c.repairs.length} repair${c.repairs.length === 1 ? '' : 's'})` : ''}${found.length ? `; blocklist hit: ${describeHits(found)}` : ''}` });
+    return { product: get(id), repairs: c.repairs, blocklistHits: hits, blocklistDetail: found };
   }
 
   /** Manual edit: rules re-enforced, blocklist re-run. PENDING_APPROVAL steps back to listing_drafted. */
@@ -297,6 +361,13 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
       if (!design || !design.image_path) throw new PipelineError('The product has no design yet', 409, 'no_design');
       const variantIds = parse(p.pod_variant_ids, []);
       if (!variantIds.length) throw new PipelineError('Choose at least one variant', 409, 'no_variants');
+      // M4: a design that is too small for the print area cannot reach mockup_ready. Refuse BEFORE anything is created or paid for.
+      const pr = checkPrint(id);
+      setFlag(id, 'print_not_ready', pr.ok ? null : printFlagDetail(pr));
+      if (!pr.ok) {
+        productEvent(db, id, { actor, note: `print-readiness refused the POD step: ${pr.reason}` });
+        throw new PipelineError(`Not print-ready: ${pr.reason}.`, 422, 'print_not_ready', { readiness: pr });
+      }
       // Retry from `failed` keeps the design already paid for: failed -> idea -> design_generated, then on.
       if (p.stage === S.FAILED) { stages.transition(id, S.IDEA, { actor, note: 'retry' }); p = stages.transition(id, S.DESIGN, { actor, note: 'retry POD product creation with the existing design' }); }
       const area = primaryArea(p);
@@ -446,10 +517,11 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
     const l = db.prepare("SELECT * FROM listings WHERE product_id = ? AND platform = 'etsy' ORDER BY id DESC LIMIT 1").get(p.id); // the draft, or after publish the same row
     const copy = l ? { title: l.title, tags: JSON.parse(l.tags || '[]'), description: l.description, repairs: JSON.parse(l.repairs || '[]'), model: l.model, updatedAt: l.updated_at } : null;
     const mockups = db.prepare('SELECT * FROM mockups WHERE product_id = ? ORDER BY is_default DESC, id').all(p.id).map(m => ({ id: m.id, url: mockupUrl(m), placement: m.placement, isDefault: !!m.is_default }));
-    return { product: { ...p, keywords: kw(p), flags: parseFlags(p), pod_variant_ids: parse(p.pod_variant_ids, []), print_spec: parse(p.print_spec, null) }, mockups, economics: unitEconomics(p), designs, costs, costTotalCents: costs.reduce((a, c) => a + c.amountCents, 0), events, copy };
+    let readiness = null; try { if (p.print_spec && designs.length) readiness = printReadiness.checkProduct({ db, dataDir, product: p, ...printRule() }); } catch { readiness = null; }
+    return { printReadiness: readiness, product: { ...p, keywords: kw(p), flags: parseFlags(p), pod_variant_ids: parse(p.pod_variant_ids, []), print_spec: parse(p.print_spec, null) }, mockups, economics: unitEconomics(p), designs, costs, costTotalCents: costs.reduce((a, c) => a + c.amountCents, 0), events, copy };
   }
 
-  return { create, generateDesign, draftCopy, editCopy, detail, validateInput, PipelineError, selectPod, createPodProduct, refreshMockups, draftListing, setPrice, submit, approve, reject, archive, marginPreview, applyMargin, exclusive, get, need, setFlag };
+  return { checkPrint, printRule, addFlags, rescanBlocklist, create, generateDesign, draftCopy, editCopy, detail, validateInput, PipelineError, selectPod, createPodProduct, refreshMockups, draftListing, setPrice, submit, approve, reject, archive, marginPreview, applyMargin, exclusive, get, need, setFlag };
 }
 
 module.exports = { makePipeline, PipelineError, PRINT_W, PRINT_H };

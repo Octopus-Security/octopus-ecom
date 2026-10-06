@@ -123,6 +123,8 @@ function router(deps) {
 
   // Publish, listing edits, Etsy connection and sales live in routes/etsy.js.
   require('./etsy').mount(r, deps);
+  // M4: blocklist editor, batch orchestrator.
+  require('./m4').mount(r, deps);
 
   r.get('/mockups/:id/file', wrap(async (req, res) => {
     const m = db.prepare('SELECT file FROM mockups WHERE id = ?').get(Number(req.params.id));
@@ -151,6 +153,7 @@ function router(deps) {
     res.json({
       dryRun: dryRun.isOn(), disarmPhrase: dryRun.PHRASE,
       dailySpendCapCents: spend.capCents(), marginFloorCents: settings.getInt('margin_floor_cents', 200),
+      print: pipe.printRule(),
       credentials: credentials.status(),
     });
   }));
@@ -161,7 +164,16 @@ function router(deps) {
     const cents = (v, name) => { const n = Number(v); if (!Number.isFinite(n) || n < 0 || n > 100000) throw Object.assign(new Error(`${name} must be dollars between 0 and 100000`), { status: 400 }); return Math.round(n * 100); };
     if (b.dailySpendCap !== undefined) settings.set('daily_spend_cap_cents', cents(b.dailySpendCap, 'dailySpendCap'));
     if (b.marginFloor !== undefined) settings.set('margin_floor_cents', cents(b.marginFloor, 'marginFloor'));
-    res.json({ ok: true, dailySpendCapCents: spend.capCents(), marginFloorCents: settings.getInt('margin_floor_cents', 200) });
+    if (b.printMinCoverage !== undefined) {
+      const n = Number(b.printMinCoverage);
+      if (!(n >= 0.1 && n <= 1)) return res.status(400).json({ error: 'printMinCoverage must be from 0.1 to 1' });
+      settings.set('print_min_coverage', n);
+    }
+    if (b.printFit !== undefined) {
+      if (!['cover', 'contain'].includes(b.printFit)) return res.status(400).json({ error: 'printFit must be "cover" or "contain"' });
+      settings.set('print_fit', b.printFit);
+    }
+    res.json({ ok: true, dailySpendCapCents: spend.capCents(), marginFloorCents: settings.getInt('margin_floor_cents', 200), print: pipe.printRule() });
   }));
 
   // POST /api/settings/credentials {name, value} — sealed; the response carries no value.
@@ -206,7 +218,8 @@ function errorHandler(deps) {
     if (err instanceof ConfirmError) return res.status(409).json({ error: err.message, code: err.code });
     if (err.name === 'DryRunError') return res.status(400).json({ error: err.message });
     if (err.name === 'StageError') return res.status(err.code === 'not_found' ? 404 : 409).json({ error: err.message, code: err.code });
-    if (err.name === 'PipelineError') return res.status(err.status).json({ error: err.message, code: err.code, ...(err.failed ? { failed: true } : {}) });
+    if (err.name === 'PipelineError') return res.status(err.status).json({ error: err.message, code: err.code, ...(err.failed ? { failed: true } : {}), ...(err.readiness ? { readiness: err.readiness } : {}) });
+    if (err.name === 'BatchError') return res.status(err.status).json({ error: err.message, code: err.code });
     if (err.name === 'SpendCapError') return res.status(429).json({ error: err.message, code: 'spend_cap' });
     if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON' });
     if (err.status && err.status < 500) return res.status(err.status).json({ error: err.message });

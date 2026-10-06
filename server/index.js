@@ -34,11 +34,17 @@ function main(env = process.env) {
     console.log(`[ecom] listening on http://${addr.address}:${addr.port}  auth=${cfg.authMode}  DRY_RUN=${deps.dryRun.isOn() ? 'ON' : 'OFF'}`);
   });
   const stopWatchers = startWatchers(deps, { service: deps.watch });
+  // Batches: pick up what a restart cut off, and resume cap-paused batches when the ET day changes.
+  const rec = deps.orchestrator.recover();
+  if (rec.interrupted || rec.ideating) console.log(`[batch] recovered after restart: ${rec.retried} retried, ${rec.failed} failed, ${rec.ideating} re-ideating`);
+  const batchTick = setInterval(() => { try { deps.orchestrator.tick(); } catch (e) { console.warn(`[batch] tick failed: ${e.message}`); } }, 60_000);
+  batchTick.unref();
   let closing = false;
   const shutdown = (sig) => {
     if (closing) return; closing = true;
     console.log(`[ecom] ${sig}: stopping`);
     stopWatchers();
+    clearInterval(batchTick); deps.orchestrator.stop();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 5000).unref();
   };

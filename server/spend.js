@@ -36,7 +36,7 @@ function makeSpend({ db, settings, now = () => new Date() }) {
     summary() {
       const total = q('SELECT COALESCE(SUM(amount_cents),0) AS v FROM costs').v;
       // Real receipts only: simulated (stub) sales never reach NET; they are reported separately.
-      const s = q("SELECT COALESCE(SUM(gross_cents),0) AS gross, COALESCE(SUM(net_cents),0) AS net, COUNT(*) AS n FROM sales WHERE source != 'stub'");
+      const s = q("SELECT COALESCE(SUM(gross_cents),0) AS gross, COALESCE(SUM(net_cents),0) AS net, COALESCE(SUM(refund_cents),0) AS refunded, COUNT(*) AS n FROM sales WHERE source != 'stub'");
       const sim = q("SELECT COALESCE(SUM(gross_cents),0) AS gross, COALESCE(SUM(net_cents),0) AS net, COUNT(*) AS n FROM sales WHERE source = 'stub'");
       const cogs = q("SELECT COALESCE(SUM(amount_cents),0) AS v FROM costs WHERE kind = 'pod'").v;
       const fees = q("SELECT COALESCE(SUM(amount_cents),0) AS v FROM costs WHERE kind = 'listing_fee'").v;
@@ -44,9 +44,9 @@ function makeSpend({ db, settings, now = () => new Date() }) {
       return {
         currency: 'USD',
         spend: { totalCents: total, todayCents: today, dailyCapCents: cap, capReached: today >= cap, capPct: cap > 0 ? Math.min(100, Math.round((today / cap) * 100)) : 100 },
-        revenue: { grossCents: s.gross, afterFeesCents: s.net, orders: s.n, cogsCents: cogs, listingFeesCents: fees },
+        revenue: { grossCents: s.gross, refundedCents: s.refunded, afterFeesCents: s.net, orders: s.n, cogsCents: cogs, listingFeesCents: fees },
         simulated: { grossCents: sim.gross, afterFeesCents: sim.net, orders: sim.n },
-        // NET = what the (real) receipts left after Etsy + processing fees, minus every cost we incurred (image, llm, listing fees, per-sale COGS).
+        // NET = what the (real) receipts left after Etsy + processing fees and refunds, minus every cost we incurred (image, llm, listing fees, per-sale COGS).
         netCents: s.net - total,
       };
     },

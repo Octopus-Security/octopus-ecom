@@ -147,6 +147,49 @@ function migrate(db) {
   addColumn(db, 'sales', 'fee_source', 'TEXT');                                 // computed | payment_api+computed
   addColumn(db, 'sales', 'source', "TEXT NOT NULL DEFAULT 'etsy'");            // etsy | stub (simulated, never in real NET)
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS sales_order_tx ON sales(external_order_id, transaction_id) WHERE transaction_id IS NOT NULL');
+  // M4: refunds (subtracted from the matching sale) and batches
+  addColumn(db, 'sales', 'refund_cents', 'INTEGER NOT NULL DEFAULT 0');         // total refunded on this line; net_cents already has it subtracted
+  db.exec(`CREATE TABLE IF NOT EXISTS refunds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    refund_key TEXT NOT NULL UNIQUE,         -- Etsy gives a refund no id: '<receipt>:<created_ts>:<amount>:<n-th identical>'
+    external_order_id TEXT NOT NULL,         -- the receipt id
+    store_id INTEGER,
+    amount_cents INTEGER NOT NULL,           -- what Etsy reports
+    applied_cents INTEGER NOT NULL,          -- what was subtracted from sales lines (never more than they grossed)
+    reason TEXT, status TEXT,
+    ts TEXT NOT NULL, created_at TEXT NOT NULL
+  )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS batches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    niche TEXT NOT NULL, keywords TEXT NOT NULL DEFAULT '[]',
+    requested_count INTEGER NOT NULL,
+    blueprint TEXT, print_provider_id TEXT, variant_ids TEXT NOT NULL DEFAULT '[]',
+    list_price_cents INTEGER, shipping_cents INTEGER NOT NULL DEFAULT 0, store_id INTEGER,
+    status TEXT NOT NULL,                    -- ideating | running | paused_cap | done | cancelled | failed
+    status_detail TEXT,
+    concurrency INTEGER NOT NULL DEFAULT 1,
+    ideation_model TEXT, ideation_cost_cents INTEGER NOT NULL DEFAULT 0, ideation_source TEXT,
+    dropped_blocklist INTEGER NOT NULL DEFAULT 0, dropped_duplicate INTEGER NOT NULL DEFAULT 0,
+    paused_day TEXT,                         -- ET day a spend-cap pause happened (auto-resume the next day)
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL, finished_at TEXT
+  )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS batch_items (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_id INTEGER NOT NULL REFERENCES batches(id),
+    idx INTEGER NOT NULL,
+    concept TEXT NOT NULL,
+    product_id INTEGER REFERENCES products(id),
+    status TEXT NOT NULL,                    -- pending | running | interrupted | done | failed | cancelled
+    step TEXT,                               -- the step running or last completed
+    attempts INTEGER NOT NULL DEFAULT 0,
+    error TEXT,
+    qa_status TEXT,                          -- ran | skipped | error
+    models TEXT NOT NULL DEFAULT '{}',       -- JSON {concept,image,copy,qa}
+    cost_cents INTEGER NOT NULL DEFAULT 0,   -- generation spend attributed to the product
+    outcome TEXT,                            -- the product's stage when the item ended
+    updated_at TEXT NOT NULL
+  )`);
+  db.exec('CREATE INDEX IF NOT EXISTS batch_items_batch ON batch_items(batch_id, status)');
   db.exec(`CREATE TABLE IF NOT EXISTS oauth_pending (
     state TEXT PRIMARY KEY, verifier_sealed TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL
   )`);

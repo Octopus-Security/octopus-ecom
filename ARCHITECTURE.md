@@ -1,4 +1,4 @@
-# Architecture (first draft, milestone M3, 2026-10-05)
+# Architecture (milestone M4, 2026-10-05)
 
 Where this and the code disagree, the code is right.
 
@@ -14,7 +14,8 @@ server/
   auth.js         sso | dev, owner gate, sameOrigin
   crypto.js keystore.js credentials.js redact.js log.js   sealed credentials, redacted logs
   db.js settings.js spend.js confirm.js dryrun.js events.js
-  domain/         stages.js (state machine), fees.js, etsy-rules.js, blocklist.js
+  domain/         stages.js (state machine), fees.js, etsy-rules.js, blocklist.js (+ blocklist-seed.js), print-readiness.js
+  orchestrator.js batch queue (M4)
   llm/            complete() + stub / openai / openai-compatible + router-path.js
   adapters/       http.js, contract.js, route.js, <kind>/{index,stub,<real>}.js
   routes/api.js   REST API
@@ -103,7 +104,7 @@ move the product to `failed`; they never crash the process.
 
 As of M1, **ImageGen** (OpenAI Images) and **ListingCopy** (via the LLM interface) have real
 implementations and are chosen whenever a key exists, even in DRY_RUN (generation is spend, not a
-marketplace write). Printify is real as of M2 (below); Etsy (M3) and trend research remain stubs/scaffolds; Printful is a
+marketplace write). Printify is real as of M2 (below); Etsy (M3) is real; trend research remains a stub/scaffold; Printful is a
 signature-only scaffold that stays unimplemented.
 
 ### M1: image generation, copy, pipeline
@@ -180,7 +181,7 @@ summariser, so shapes are as summarised.
 
 **Print requirements.** `selectPod` reads the chosen variants' placeholders and stores them on the product as
 `products.print_spec` (`{blueprint, providerId, positions:[{position,width,height}], source, fetchedAt}`); designs are generated
-for the first position's size. The M4 print-readiness check reads this; it is not built yet.
+for the first position's size. The M4 print-readiness check reads this (below).
 
 **Pipeline.** `design_generated -> (create-pod) mockup_ready -> (draft-listing: copy if absent, margin) listing_drafted ->
 (submit) PENDING_APPROVAL -> (approve) approved`. Projected margin and its `margin_*` flags use `domain/fees.js`
@@ -243,7 +244,7 @@ exposes ONLY the card processing fee (`Payment.amount_fees`), used when readable
 `domain/fees.js`; `sales.fee_source` says which. A tracked listing also writes a `costs` row kind `pod` = base cost x qty in the same
 transaction; an untracked listing is kept at store level with COGS unknown (NULL). NET = real sales net minus every cost. Simulated
 sales (stub storefront) have `source='stub'`, write no COGS and are reported under `summary.simulated`, never in NET. The daily spend
-cap ignores `pod` and `listing_fee` costs: it governs generation. Not built: refunds (counted in the sync result, not subtracted).
+cap ignores `pod` and `listing_fee` costs: it governs generation. Refunds (M4): see below.
 
 **Listing stats.** Etsy's `Listing.views` (tabulated daily, active listings only) and `num_favorers` ARE exposed;
 there is no per-listing sales counter, so `getListingStats` returns `sales: null` and the performance watcher counts ingested sales.
@@ -260,6 +261,52 @@ defaults; `x-remaining-today` is logged when low.
 4. Etsy needs a shop: open one in Shop Manager first. In Printify, connect that Etsy shop to your Printify shop.
 5. Settings -> Stores -> Connect Etsy, approve the four scopes. The store should read "connected" with the shop name.
 6. For each product: arm live writes, re-run "create POD product" (reads the real base cost), submit, approve, then Publish.
+
+### M4: print readiness, blocklist, batches, refunds
+
+**Print readiness (`domain/print-readiness.js`).** The latest design's TRUE pixel size is read from the PNG IHDR of the stored file (never
+from `designs.width/height`) and compared with `products.print_spec`. With `rw = designW / requiredW` and `rh = designH / requiredH`:
+`PRINT_FIT=cover` (default) takes `coverage = min(rw, rh)`, so both dimensions must reach the requirement; `PRINT_FIT=contain` takes
+`max(rw, rh)`: the design is placed whole, letter-boxed, and only its limiting side must reach it (this is how the Printify adapter
+actually places the image). A position passes at `coverage >= PRINT_MIN_COVERAGE` (default 1.0). Panel Settings can override both. Only the position the
+design is placed on is decided. DPI is reported only if the spec carries physical size (Printify's does not: pixel-based only). If the
+design was upscaled the message says so and what fraction the native size was. A failing design makes `create-pod` answer 422
+`print_not_ready` (nothing is sent to the provider, the stage stays `design_generated`), sets the `print_not_ready` flag (also set as
+soon as the design is generated), and an unreadable file or unknown print spec is a refusal, not a pass. **Default consequence:** M1 upscales
+gpt-image-1's 1024x1536 to 3600x5400, which is 80% of a 4500x5400 tee area's width: at the defaults it is REFUSED. Accept it with
+`PRINT_MIN_COVERAGE=0.8` or `PRINT_FIT=contain`. The stub generator makes the requested size, so the no-key flow passes.
+
+**Blocklist (`domain/blocklist.js`, seed in `blocklist-seed.js`).** About 1,650 seeded terms (brands, leagues, teams, franchises, characters,
+celebrities, slogans), editable in Settings -> Blocklist (list, add, remove, newline import, a test box); every edit re-scans unfinished
+products. A removed seed term stays removed across a seed-version bump. Checked on the brief at creation (before any spend), then title, tags
+and description at every copy save, with the field named in the flag (`nike [title, brief]`). **Matching:** lower-case, diacritics stripped,
+split on every non-alphanumeric character into whole-word tokens (so `nike` never matches inside `nikephoros`); hyphen/space/joined variants
+(`spider-man`, `spider man`, `spiderman`), plurals (`nikes`) and possessives (`nike's`) match, a listed plural is not matched by its singular;
+common words are seeded only as the phrase that makes them a brand (`apple watch`, `new york giants`), and a small EXCEPTIONS list drops
+known benign contexts (`nikola tesla`). **Limits:** text only; no logos or likenesses, misspellings (`n1ke`), other scripts or unlisted
+names; a seeded phrase flags innocent uses of the same words together; a clean result means "nothing obvious", never "cleared". A hit FLAGS:
+it blocks agent approval and autopublish, is listed in the human approval summary, and never rewrites the text.
+
+**Batch orchestrator (`orchestrator.js`).** `POST /api/batch {niche, count<=25, keywords?, blueprint, printProviderId, variantIds?,
+listPrice, shipping?, storeId?, concurrency?}` -> 202; poll `GET /api/batch/:id`; `POST .../cancel`, `.../resume`. Tables `batches` and
+`batch_items`. Ideation: the LLM proposes distinct original concepts (blocklisted and near-duplicate ones dropped and counted); deterministic
+templates top up whatever it cannot supply (the only source with the stub LLM). A branded niche/keyword is refused up front. Each item walks
+create -> design -> print check + POD -> copy + margin -> QA -> submit and STOPS at PENDING_APPROVAL; concurrency 1 (default) or 2. The only
+publishing path is autopublish: store autopublish ON and DRY_RUN off and no flags and a QA pass that actually ran, then `pipeline.approve`
+(stages.transition's agent rule) and `publisher.publish` (same blocker list); a failed publish steps the product back to PENDING_APPROVAL.
+**Spend cap:** checked before each paid step; a hit pauses the batch (`paused_cap`, item back to pending, never failed, never a stub
+fallback); the next ET day resumes it (a 60 s timer in `index.js`), or resume by hand. **Restart:** `recover()` marks running items
+interrupted and retries each once (a second interruption fails it); work resumes from the product's stage so a paid design is never
+re-bought. **Cancel:** nothing new starts; a step already in flight finishes. **Tiers:** with a ROUTER_PATH table (or any `LLM_MODEL_<TIER>`)
+ideation uses `cheap` and QA `deep` (copy is always `standard`); without one both use `standard`. **QA:** an LLM review that can only add
+`qa_*` flags (`addFlags` never removes); an error or the stub means "not reviewed" and blocks autopublish without flagging. Per-item cost
+and model per step are stored. A batch's products carry the normal flags (e.g. `pod_cost_estimated` under DRY_RUN).
+
+**Refunds (`etsy/sales.js`).** Etsy's `ShopRefund` is receipt-level and has no id (read from the OpenAPI document), so each refund is keyed
+`<receipt>:<created_ts>:<amount>:<n-th identical>` in `refunds` (UNIQUE: re-reading never subtracts twice). The amount is spread over the
+receipt's sales lines by gross (capped at what each grossed; the remainder goes to lines with room), stored in `sales.refund_cents`, and
+`net_cents` is recomputed so NET reflects it. Receipts are re-read back `REFUND_LOOKBACK_DAYS` (30) without re-fetching their fee. Assumed,
+unverified conservative choices: Etsy's fees are not returned, per-sale COGS is not reversed, all listed refunds count whatever their `status`.
 
 ## Credentials
 
@@ -283,7 +330,7 @@ cap uses the America/New_York calendar day.
 
 SQLite via `node:sqlite`. Spec tables: `stores`, `products`, `designs`, `mockups`,
 `listings`, `events`, `costs`, `sales`; plus `settings`, `keys` (sealed),
-`blocklist`. Migrations are additive only. `events.product_id` is NULL for system
+`blocklist`, `refunds`, `batches`, `batch_items`, `oauth_pending`. Migrations are additive only. `events.product_id` is NULL for system
 events (`kind = 'system'`); `kind = 'note'` events belong to a product but are not stage changes. Confirm tokens are in memory (a restart invalidates them).
 
 ## Watchers and playbooks
@@ -315,7 +362,10 @@ events (`kind = 'system'`); `kind = 'note'` events belong to a product but are n
 
 ## Not yet built
 
-Refund handling in the sales ingest, Etsy's transaction/listing fee as API fields (they are not exposed; computed instead),
-clean-up of an orphaned Printify product when a design is regenerated after a live create, the Etsy direct-create path
-(`createListing` is implemented but not wired to any route: it needs taxonomy, shipping profile and images), batch orchestrator,
-print-readiness enforcement and `docs/COMPLIANCE.md` (M4).
+- Etsy's transaction/listing fee as API fields (not exposed; computed instead).
+- Clean-up of an orphaned Printify product when a design is regenerated after a live create.
+- The Etsy direct-create path (`createListing` is implemented but wired to no route: it needs taxonomy, shipping profile and images).
+- Writing an AI-disclosure sentence into listings or setting Etsy's AI/"Designed by" fields (see `docs/COMPLIANCE.md`).
+- Batch autopublish and the whole live Etsy/Printify path have never run against real accounts.
+- Printful (signature only), a real TrendResearch source, a visual (image) check for logos or likenesses.
+- Refund edge cases not verified against a real refunded order (fee treatment, partial statuses).

@@ -91,6 +91,16 @@ export default function ProductDrawer({ id, onClose, onChanged, askConfirm }) {
         </section>
       )}
 
+      {d.printReadiness && (
+        <section>
+          <h4>Print readiness <span className={d.printReadiness.ok ? 'pos small' : 'neg small'}>{d.printReadiness.ok ? 'ready' : 'NOT ready'}</span></h4>
+          <div className="small muted">Rule: {d.printReadiness.fit} fit, at least {Math.round(d.printReadiness.minCoverage * 100)}% of the print area. Measured from the file's PNG header.</div>
+          {d.printReadiness.positions.map((r) => (
+            <div className={`small ${r.ok ? '' : 'neg'}`} key={r.position}>{r.position}{r.placed ? '' : ' (no design placed here)'}: design {r.design.width}x{r.design.height}px, needs {r.required.width}x{r.required.height}px, coverage {Math.round(r.coverage * 100)}%{r.dpi ? `, ${r.dpi} dpi` : ''}</div>))}
+          {d.printReadiness.reason && <div className="small neg">{d.printReadiness.reason}</div>}
+          {d.printReadiness.notes.map((n, i) => <div className="small muted" key={i}>{n}</div>)}
+        </section>)}
+
       {d.mockups.length > 0 && (
         <section>
           <h4>Mockups</h4>

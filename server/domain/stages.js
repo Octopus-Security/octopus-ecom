@@ -66,6 +66,12 @@ function approvalSummary(product, { dryRun } = {}) {
   lines.push(`List price ${usd(product.list_price_cents)}; POD base cost ${usd(product.pod_base_cost_cents)}${product.pod_cost_source === 'estimate' ? ' (an ESTIMATE, not a Printify price)' : ''}.`);
   if (m !== null && m !== undefined) lines.push(`Projected unit margin: ${usd(m)}.`);
   if (flags.length) lines.push(`FLAGGED: ${flags.map(f => f.code + (f.detail ? ` (${f.detail})` : '')).join('; ')}.`);
+  const bl = flags.find(f => f.code === 'blocklist');
+  if (bl) lines.push(`TRADEMARK/IP BLOCKLIST HITS: ${bl.detail}. Approve only if you have the right to use these terms; otherwise edit the copy or reject.`);
+  const pn = flags.find(f => f.code === 'print_not_ready');
+  if (pn) lines.push(`PRINT-READINESS: ${pn.detail}.`);
+  const qa = flags.filter(f => String(f.code).startsWith('qa_'));
+  if (qa.length) lines.push(`AUTOMATED REVIEW raised: ${qa.map(f => `${f.code} (${f.detail})`).join('; ')}.`);
   if (dryRun) lines.push('DRY_RUN is on: nothing real will be published until live writes are armed.');
   lines.push('Publishing afterwards is irreversible by this app.');
   return lines.join(' ');

@@ -19,3 +19,7 @@ This repository is public; keep this file to facts about the code.
 - Etsy tokens exist only sealed in `stores.oauth_sealed`; OAuth state and PKCE verifiers live sealed in `oauth_pending`, single use, 10 minutes. Etsy `x-api-key` is `keystring:shared_secret`.
 - A live publish is refused by name (`etsy/publish.js` `blockers`) before any confirm token exists; the Etsy listing fee is written once, when the listing id is first known. `costs.kind='pod'` is per-sale COGS written only by the sales ingest, and neither it nor `listing_fee` counts toward the daily cap.
 - Simulated (stub) sales carry `source='stub'` and never enter real NET.
+- Print readiness reads the PNG header of the stored file, never stored metadata; do not weaken the default (`PRINT_MIN_COVERAGE=1`, cover) to make a design pass: change the rule explicitly or regenerate.
+- A blocklist hit only flags. The matcher is token-based (`domain/blocklist.js`); add a seeded common word only as the phrase that makes it a brand, and add a false-positive test with any new rule.
+- The batch orchestrator never publishes except through autopublish (store flag, DRY_RUN off, no flags, QA ran) via `pipeline.approve` + `publisher.publish`; a cap hit is a pause, not a failure; QA only adds flags.
+- A refund has no Etsy id: its key is derived; never subtract without the `refunds.refund_key` uniqueness check.

@@ -38,6 +38,20 @@ function loadConfig(env = process.env) {
   const dailySpendCapCents = dollarsToCents(env.DAILY_SPEND_CAP, 500, 'DAILY_SPEND_CAP', errors);
   const marginFloorCents = dollarsToCents(env.MARGIN_FLOOR, 200, 'MARGIN_FLOOR', errors);
 
+  // M4: print-readiness rule and batch limits. Bad values refuse to boot rather than silently weakening a safety check.
+  const minCov = env.PRINT_MIN_COVERAGE === undefined || env.PRINT_MIN_COVERAGE === '' ? 1 : Number(env.PRINT_MIN_COVERAGE);
+  if (!(minCov >= 0.1 && minCov <= 1)) errors.push(`PRINT_MIN_COVERAGE must be a number from 0.1 to 1 (1 = both print-area dimensions must be met), got "${env.PRINT_MIN_COVERAGE}".`);
+  const printFit = (env.PRINT_FIT || 'cover').trim().toLowerCase();
+  if (!['cover', 'contain'].includes(printFit)) errors.push(`PRINT_FIT must be "cover" or "contain", got "${env.PRINT_FIT}".`);
+  const intIn = (name, def, lo, hi) => {
+    if (env[name] === undefined || env[name] === '') return def;
+    const n = Number(env[name]);
+    if (!Number.isInteger(n) || n < lo || n > hi) { errors.push(`${name} must be an integer from ${lo} to ${hi}, got "${env[name]}".`); return def; }
+    return n;
+  };
+  const batch = { concurrency: intIn('BATCH_CONCURRENCY', 1, 1, 2), maxCount: intIn('BATCH_MAX_COUNT', 25, 1, 100) };
+  const refundLookbackDays = intIn('REFUND_LOOKBACK_DAYS', 30, 0, 365);
+
   if (errors.length) {
     const err = new Error('Refusing to boot:\n  - ' + errors.join('\n  - '));
     err.bootErrors = errors;
@@ -65,6 +79,9 @@ function loadConfig(env = process.env) {
       marginFloorCents,
     },
     etsyRedirectUri: env.ETSY_REDIRECT_URI || '',
+    print: { minCoverage: Number.isFinite(minCov) ? minCov : 1, fit: printFit },
+    batch,
+    refundLookbackDays,
     llm: {
       provider: (env.LLM_PROVIDER || '').trim().toLowerCase(),
       baseUrl: (env.LLM_BASE_URL || '').trim(),

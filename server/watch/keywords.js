@@ -4,14 +4,13 @@
  * (manual source: nothing) and checks our own terms against the trademark blocklist table.
  */
 const { validateSignals } = require('./trend');
+const { checkBlocklist } = require('../domain/blocklist');
 
 async function runKeywordWatch({ db, alerts, trendSource, log }) {
   const entries = db.prepare('SELECT * FROM watchlist WHERE active = 1').all();
-  const blocked = db.prepare('SELECT term FROM blocklist').all().map(r => r.term);
   let signals = 0, hits = 0, errors = 0;
   for (const e of entries) {
-    const hay = ` ${e.term.toLowerCase().replace(/[^a-z0-9\-\s]/g, ' ')} `;
-    for (const t of blocked.filter(t => hay.includes(` ${t} `))) {
+    for (const t of checkBlocklist(db, [e.term])) {
       hits++;
       alerts.raise({ kind: 'watchlist_blocklist', severity: 'warn', playbookId: 'launch-pod-etsy', dedupeKey: `watchlist_blocklist.${e.id}.${t}`,
         message: `Watchlist ${e.kind} "${e.term}" contains blocklisted term "${t}". Do not design or list around a brand/franchise.` });

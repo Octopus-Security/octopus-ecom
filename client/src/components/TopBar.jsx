@@ -2,7 +2,7 @@ import React from 'react';
 import { dollars } from '../api.js';
 import AlertsTray from './watch/AlertsTray.jsx';
 
-export default function TopBar({ summary, onToggleDryRun, onSettings, onNew, view, onView, watchApi, onOpenPlaybook }) {
+export default function TopBar({ summary, onToggleDryRun, onSettings, onNew, onBatch, view, onView, watchApi, onOpenPlaybook }) {
   if (!summary) return <header className="topbar"><strong>Shop</strong><span className="muted">loading...</span></header>;
   const { spend, revenue, netCents, dryRun, simulated } = summary;
   return (
@@ -22,11 +22,12 @@ export default function TopBar({ summary, onToggleDryRun, onSettings, onNew, vie
         </div>
       </div>
       <nav className="views" aria-label="View">
-        {[['board', 'Board'], ['sales', 'Sales'], ['watch', 'Watch'], ['playbooks', 'Playbooks']].map(([v, l]) => (
+        {[['board', 'Board'], ['batches', 'Batches'], ['sales', 'Sales'], ['watch', 'Watch'], ['playbooks', 'Playbooks']].map(([v, l]) => (
           <button key={v} className={`ghost ${view === v ? 'active' : ''}`} aria-pressed={view === v} onClick={() => onView(v)}>{l}</button>
         ))}
       </nav>
       <button onClick={onNew}>New product</button>
+      <button className="ghost" onClick={onBatch}>Run batch</button>
       {watchApi && <AlertsTray api={watchApi} onOpenPlaybook={onOpenPlaybook} />}
       <button className="ghost" onClick={onSettings}>Settings</button>
     </header>

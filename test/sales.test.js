@@ -68,7 +68,7 @@ test('idempotent: re-running (and overlapping windows) changes nothing and write
 });
 
 test('the receipts request pages with limit 100 oldest-first, only paid receipts, from the cursor minus an overlap', async () => {
-  const { d, st, calls } = liveDeps();
+  const { d, st, calls } = liveDeps({}, { REFUND_LOOKBACK_DAYS: '0' }); // no extra look-back, so the window is exactly cursor - overlap
   const store = connectStore(d); published(d, store);
   st.receipts = Array.from({ length: 130 }, (_, i) => receipt(2000 + i, T0 + i, [tx(9000 + i, 900, 1, 1000)]));
   const out = await d.sales.sync();
