@@ -22,7 +22,7 @@ export default function TopBar({ summary, onToggleDryRun, onSettings, onNew, onB
         </div>
       </div>
       <nav className="views" aria-label="View">
-        {[['board', 'Board'], ['batches', 'Batches'], ['sales', 'Sales'], ['watch', 'Watch'], ['playbooks', 'Playbooks']].map(([v, l]) => (
+        {[['board', 'Board'], ['batches', 'Batches'], ['sales', 'Sales'], ['watch', 'Watch'], ['playbooks', 'Playbooks'], ['plan', 'Plan']].map(([v, l]) => (
           <button key={v} className={`ghost ${view === v ? 'active' : ''}`} aria-pressed={view === v} onClick={() => onView(v)}>{l}</button>
         ))}
       </nav>

@@ -48,6 +48,12 @@ services:
       - LLM_PROVIDER=${LLM_PROVIDER:-}
       - LLM_BASE_URL=${LLM_BASE_URL:-}
       - LLM_API_KEY=${LLM_API_KEY:-}
+      # Model calls (listing copy, ideas, the Plan chat) go through cortex, which bills the
+      # signed-in user. INTERNAL_SECRET must equal cortex's value; without it the app starts and
+      # falls back to OPENAI_API_KEY / LLM_BASE_URL / the stub, which looks like "the model got
+      # worse" rather than like a missing variable. LLM_PROVIDER=cortex forces it.
+      - CORTEX_URL=${CORTEX_URL:-http://octopus-cortex:3010}
+      - INTERNAL_SECRET=${INTERNAL_SECRET:-}
       - ROUTER_PATH=${ROUTER_PATH:-}
       - LLM_MODEL_CHEAP=${LLM_MODEL_CHEAP:-}
       - LLM_MODEL_STANDARD=${LLM_MODEL_STANDARD:-}
