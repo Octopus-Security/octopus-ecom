@@ -14,10 +14,13 @@ export default function ProductDrawer({ id, onClose, onChanged, askConfirm }) {
   const [copy, setCopy] = useState({ title: '', tags: '', description: '' });
   const [note, setNote] = useState('');
   const [price, setPrice] = useState('');
+  const [blockers, setBlockers] = useState([]);
+  const [edit, setEdit] = useState({ title: '', tags: '', price: '' });
 
   const load = useCallback(async () => {
     try {
       const x = await api.product(id); setD(x); setBrief(x.product.brief); setPrice(x.product.list_price_cents === null ? '' : (x.product.list_price_cents / 100).toFixed(2));
+      setEdit({ title: x.copy ? x.copy.title || '' : '', tags: x.copy ? (x.copy.tags || []).join(', ') : '', price: x.product.list_price_cents === null ? '' : (x.product.list_price_cents / 100).toFixed(2) });
       if (x.copy) setCopy({ title: x.copy.title || '', tags: (x.copy.tags || []).join(', '), description: x.copy.description || '' });
     } catch (e) { setErr(e.message); }
   }, [id]);
@@ -37,6 +40,28 @@ export default function ProductDrawer({ id, onClose, onChanged, askConfirm }) {
       if (!gate.needsConfirm) { await load(); onChanged(); return; }
       askConfirm({ title: 'Approve for publishing?', summary: gate.summary, danger: (d.product.flags || []).length > 0,
         run: async () => { await api.approve(id, gate.token); await load(); onChanged(); } });
+    } catch (e) { setErr(e.message); }
+  }
+  async function publish() {
+    setErr(''); setBlockers([]);
+    try {
+      const gate = await api.publish(id);
+      askConfirm({ title: gate.summary && /SIMULATED/.test(gate.summary) ? 'Simulate publishing?' : 'Publish to Etsy?', summary: gate.summary, danger: !/SIMULATED/.test(gate.summary),
+        run: async () => { const r = await api.publish(id, gate.token); setNote(r.faked ? 'Simulated (DRY_RUN): nothing was published and the stage did not change.' : 'Published through Printify.'); await load(); onChanged(); } });
+    } catch (e) { setErr(e.message); setBlockers((e.data && e.data.blockers) || []); }
+  }
+  async function saveEdit() {
+    setErr(''); setNote('');
+    const body = {}; const l = d.copy || {};
+    if (edit.title && edit.title !== (l.title || '')) body.title = edit.title;
+    if (parseTags(edit.tags).join(',') !== (l.tags || []).join(',')) body.tags = parseTags(edit.tags);
+    if (edit.price !== '' && Math.round(Number(edit.price) * 100) !== d.product.list_price_cents) body.price = edit.price;
+    if (!Object.keys(body).length) { setNote('Nothing changed.'); return; }
+    try {
+      const gate = await api.editListing(id, body);
+      const done = (r) => { setNote(r.faked ? 'Simulated (DRY_RUN): nothing was sent.' : 'Etsy listing updated.'); return load().then(onChanged); };
+      if (gate.needsConfirm) askConfirm({ title: 'Change the live price?', summary: gate.summary, danger: true, run: async () => done(await api.editListing(id, { ...body, token: gate.token })) });
+      else await done(gate);
     } catch (e) { setErr(e.message); }
   }
   const ask = (title, summary, fn) => askConfirm({ title, summary, danger: true, run: async () => { await fn(); await load(); onChanged(); } });
@@ -141,6 +166,32 @@ export default function ProductDrawer({ id, onClose, onChanged, askConfirm }) {
           </>
         )}
       </section>
+
+      {st === 'approved' && (
+        <section>
+          <h4>Publish</h4>
+          <div className="muted small">{d.publish && d.publish.dryRun ? 'DRY_RUN is on: publishing is only simulated.' : 'Sends the product through Printify to the real Etsy shop. A confirmation shows the shop, price and listing fee first.'}</div>
+          {d.publish && d.publish.blockers.length > 0 && <ul className="small warn">{d.publish.blockers.map((b) => <li key={b.code}>{b.message}</li>)}</ul>}
+          {blockers.length > 0 && <ul className="small neg">{blockers.map((b) => <li key={b.code}>{b.message}</li>)}</ul>}
+          <div className="row"><button className="danger" disabled={!!busy} onClick={publish}>Publish...</button></div>
+        </section>)}
+
+      {(st === 'published' || st === 'live') && (
+        <section>
+          <h4>Etsy listing</h4>
+          {d.published && d.published.url ? <div><a href={d.published.url} target="_blank" rel="noreferrer">{d.published.url}</a> <span className="muted small">({d.published.status}{d.published.views !== null && d.published.views !== undefined ? `, ${d.published.views} views` : ''})</span></div>
+            : <div className="muted small">{st === 'published' ? 'Printify is still publishing; Etsy has not shown the listing yet.' : 'No listing link yet.'}</div>}
+          <div className="row"><button className="ghost" disabled={!!busy} onClick={() => run('status', () => api.refreshStatus(id))}>{busy === 'status' ? 'Checking...' : 'Refresh status'}</button></div>
+          {d.published && d.published.externalId && (
+            <>
+              <h4>Edit the live listing</h4>
+              <label>Title <Counter n={[...edit.title].length} max={LIM.title} label="chars" /><input value={edit.title} onChange={(e) => setEdit({ ...edit, title: e.target.value })} /></label>
+              <label>Tags <Counter n={parseTags(edit.tags).length} max={LIM.tags} label="tags" /><input value={edit.tags} onChange={(e) => setEdit({ ...edit, tags: e.target.value })} /></label>
+              <label>Price (USD)<input type="number" min="0" step="0.01" value={edit.price} onChange={(e) => setEdit({ ...edit, price: e.target.value })} /></label>
+              <div className="row"><button disabled={!!busy} onClick={saveEdit}>Save to Etsy</button><span className="muted small">A price change asks for confirmation. Etsy rules are enforced on the server.</span></div>
+              {note && <div className="small pos">{note}</div>}
+            </>)}
+        </section>)}
 
       <section>
         <h4>Costs</h4>

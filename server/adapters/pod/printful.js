@@ -9,7 +9,7 @@ function createPrintful(/* { http, credentials, log } */) {
   return {
     implemented: false,
     listBlueprints: ni('listBlueprints'), listVariants: ni('listVariants'), listPrintProviders: ni('listPrintProviders'), getVariantCosts: ni('getVariantCosts'), getAvailability: ni('getAvailability'),
-    createProduct: ni('createProduct'), getMockups: ni('getMockups'), publish: ni('publish'),
+    createProduct: ni('createProduct'), getMockups: ni('getMockups'), getShopInfo: ni('getShopInfo'), getPublishState: ni('getPublishState'), publish: ni('publish'),
   };
 }
 module.exports = { createPrintful };

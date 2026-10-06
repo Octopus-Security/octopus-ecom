@@ -29,10 +29,11 @@ Operator playbooks (checklists for margin drops, stock-outs, etc.) live in `docs
 
 ## Status
 
-Milestone M2: everything from M1 plus a Printify adapter (catalog reads are real once
-`PRINTIFY_API_TOKEN` is set, product creation is faked under dry-run), a composer that picks
-blueprint, print provider and variants with a live projected margin, mockups on the card and
-drawer, and an approval gate (submit, two-step confirmed approve, reject, archive). Publishing
-to a real store arrives in M3, the batch orchestrator and print-readiness check in M4.
-Generation is real with an OpenAI key (BYOK, daily cap) even in dry-run; otherwise stubbed.
-See `ARCHITECTURE.md`.
+Milestone M3: everything from M2 plus the real Etsy Open API v3 adapter (OAuth2 + PKCE connect
+from Settings -> Stores, token refresh, listing edits, receipt ingest), the Printify -> Etsy publish
+path (confirm-gated, refused unless every precondition holds), reconcile to `live`, per-sale COGS and
+NET from real receipts. Etsy and publishing only go real with Etsy app credentials, a connected
+shop and DRY_RUN off; otherwise everything is stubbed and a publish is only simulated.
+The batch orchestrator and print-readiness check are M4. Generation is real with an OpenAI key
+(BYOK, daily cap) even in dry-run; otherwise stubbed. See `ARCHITECTURE.md` (including the exact
+steps to register the Etsy app and connect).

@@ -57,3 +57,5 @@ textarea { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px soli
 .gallery { display: flex; gap: 6px; overflow-x: auto; } .gallery img { height: 140px; border-radius: 4px; border: 1px solid var(--line); }
 .econ { border-collapse: collapse; font-size: .85rem; } .econ td { padding: 1px 10px 1px 0; } .econ td:last-child { text-align: right; }
 input.inline { width: 8rem; margin-left: 6px; }
+.banner.warn-banner { background: color-mix(in srgb, var(--warn, #d9a400) 18%, transparent); border: 1px solid var(--warn, #d9a400); padding: 8px 12px; margin: 8px 0; border-radius: 6px; }
+.scroll-x { overflow-x: auto; }

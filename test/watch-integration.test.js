@@ -14,9 +14,9 @@ test('contract carries the two watcher reads', () => {
 
 test('a read method the real adapter lacks falls back to the stub instead of throwing', async () => {
   const calls = [];
-  const stub = { listBlueprints: async () => 0, listPrintProviders: async () => 0, listVariants: async () => 0, getVariantCosts: async () => 0, getAvailability: async () => { calls.push('stub.avail'); return { variants: [] }; }, createProduct: async () => 0, getMockups: async () => 0, publish: async () => 0 };
+  const stub = { listBlueprints: async () => 0, listPrintProviders: async () => 0, listVariants: async () => 0, getVariantCosts: async () => 0, getAvailability: async () => { calls.push('stub.avail'); return { variants: [] }; }, createProduct: async () => 0, getMockups: async () => 0, getShopInfo: async () => 0, getPublishState: async () => 0, publish: async () => 0 };
   // implemented real adapter, credential present, but no getAvailability (like printify.js before M2)
-  const real = { implemented: true, listBlueprints: async () => 0, listPrintProviders: async () => 0, listVariants: async () => 0, getVariantCosts: async () => 0, createProduct: async () => 0, getMockups: async () => 0, publish: async () => 0 };
+  const real = { implemented: true, listBlueprints: async () => 0, listPrintProviders: async () => 0, listVariants: async () => 0, getVariantCosts: async () => 0, createProduct: async () => 0, getMockups: async () => 0, getShopInfo: async () => 0, getPublishState: async () => 0, publish: async () => 0 };
   const a = routeAdapter({ kind: 'pod', stub, real, hasCredential: () => true, isDryRun: () => false, log: { info() {} } });
   assert.deepEqual(await a.getAvailability('bp', 'pp'), { variants: [] });
   assert.deepEqual(calls, ['stub.avail']);

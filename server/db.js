@@ -123,6 +123,33 @@ function migrate(db) {
   addColumn(db, 'mockups', 'file', 'TEXT');                                     // local file under DATA_DIR/mockups (stub mockups); url is null then
   addColumn(db, 'mockups', 'is_default', 'INTEGER NOT NULL DEFAULT 0');
   addColumn(db, 'mockups', 'variant_ids', "TEXT NOT NULL DEFAULT '[]'");
+  // M3: Etsy connection, publish, sales ingest
+  addColumn(db, 'stores', 'status', "TEXT NOT NULL DEFAULT 'disconnected'");   // connected | no_shop | disconnected
+  addColumn(db, 'stores', 'status_detail', 'TEXT');                             // operator-facing message
+  addColumn(db, 'stores', 'shop_name', 'TEXT');
+  addColumn(db, 'stores', 'shop_url', 'TEXT');
+  addColumn(db, 'stores', 'external_user_id', 'TEXT');
+  addColumn(db, 'stores', 'token_expires_at', 'TEXT');                          // ISO; access token (about 1 h)
+  addColumn(db, 'stores', 'refresh_expires_at', 'TEXT');                        // ISO; refresh token (about 90 days from the last refresh)
+  addColumn(db, 'stores', 'connected_at', 'TEXT');
+  addColumn(db, 'stores', 'sales_cursor', 'INTEGER');                           // newest receipt created_timestamp (epoch seconds) ingested
+  addColumn(db, 'stores', 'last_sales_sync_at', 'TEXT');
+  addColumn(db, 'listings', 'store_id', 'INTEGER');
+  addColumn(db, 'listings', 'fee_recorded', 'INTEGER NOT NULL DEFAULT 0');      // the listing fee is charged to costs once
+  addColumn(db, 'listings', 'views', 'INTEGER');
+  addColumn(db, 'listings', 'checked_at', 'TEXT');
+  addColumn(db, 'sales', 'transaction_id', 'TEXT');
+  addColumn(db, 'sales', 'store_id', 'INTEGER');
+  addColumn(db, 'sales', 'product_id', 'INTEGER');
+  addColumn(db, 'sales', 'external_listing_id', 'TEXT');
+  addColumn(db, 'sales', 'quantity', 'INTEGER NOT NULL DEFAULT 1');
+  addColumn(db, 'sales', 'cogs_cents', 'INTEGER');                              // NULL = unknown (untracked listing)
+  addColumn(db, 'sales', 'fee_source', 'TEXT');                                 // computed | payment_api+computed
+  addColumn(db, 'sales', 'source', "TEXT NOT NULL DEFAULT 'etsy'");            // etsy | stub (simulated, never in real NET)
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS sales_order_tx ON sales(external_order_id, transaction_id) WHERE transaction_id IS NOT NULL');
+  db.exec(`CREATE TABLE IF NOT EXISTS oauth_pending (
+    state TEXT PRIMARY KEY, verifier_sealed TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL
+  )`);
 }
 
 function openDb(file) {

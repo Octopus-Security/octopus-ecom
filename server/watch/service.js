@@ -25,7 +25,7 @@ function makeWatchService(deps) {
   const readers = deps.readers || makeReaders(adapters);
   const impl = {
     supplier: () => runSupplierWatch({ db, readers, alerts, state, settings, log }),
-    performance: () => runPerformanceWatch({ db, readers, alerts, state, log, env }),
+    performance: () => runPerformanceWatch({ db, readers, alerts, state, log, env, hooks: deps.hooks }),
     keywords: () => runKeywordWatch({ db, alerts, trendSource, log }),
   };
   let running = false;

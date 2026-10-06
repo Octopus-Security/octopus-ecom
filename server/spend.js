@@ -13,7 +13,10 @@ class SpendCapError extends Error {
 function makeSpend({ db, settings, now = () => new Date() }) {
   const q = (sql, ...a) => db.prepare(sql).get(...a);
   const capCents = () => settings.getInt('daily_spend_cap_cents', 500);
-  const todayCents = () => q('SELECT COALESCE(SUM(amount_cents),0) AS v FROM costs WHERE day = ?', etDay(now())).v;
+  // The daily cap governs GENERATION spend (image/llm/ad). Per-sale COGS ('pod') is the cost of goods sold, and the
+  // Etsy listing fee ('listing_fee') is a marketplace charge for something the operator already approved: neither can
+  // be "paused", and counting them would let a busy sales day stop image generation.
+  const todayCents = () => q("SELECT COALESCE(SUM(amount_cents),0) AS v FROM costs WHERE day = ? AND kind NOT IN ('pod','listing_fee')", etDay(now())).v;
   return {
     capCents, todayCents,
     addCost({ productId = null, kind, amountCents, note = null }) {
@@ -32,13 +35,18 @@ function makeSpend({ db, settings, now = () => new Date() }) {
     },
     summary() {
       const total = q('SELECT COALESCE(SUM(amount_cents),0) AS v FROM costs').v;
-      const s = q('SELECT COALESCE(SUM(gross_cents),0) AS gross, COALESCE(SUM(net_cents),0) AS net, COUNT(*) AS n FROM sales');
+      // Real receipts only: simulated (stub) sales never reach NET; they are reported separately.
+      const s = q("SELECT COALESCE(SUM(gross_cents),0) AS gross, COALESCE(SUM(net_cents),0) AS net, COUNT(*) AS n FROM sales WHERE source != 'stub'");
+      const sim = q("SELECT COALESCE(SUM(gross_cents),0) AS gross, COALESCE(SUM(net_cents),0) AS net, COUNT(*) AS n FROM sales WHERE source = 'stub'");
+      const cogs = q("SELECT COALESCE(SUM(amount_cents),0) AS v FROM costs WHERE kind = 'pod'").v;
+      const fees = q("SELECT COALESCE(SUM(amount_cents),0) AS v FROM costs WHERE kind = 'listing_fee'").v;
       const cap = capCents(); const today = todayCents();
       return {
         currency: 'USD',
         spend: { totalCents: total, todayCents: today, dailyCapCents: cap, capReached: today >= cap, capPct: cap > 0 ? Math.min(100, Math.round((today / cap) * 100)) : 100 },
-        revenue: { grossCents: s.gross, afterFeesCents: s.net, orders: s.n },
-        // NET = what the receipts left after Etsy + processing fees, minus every cost we incurred.
+        revenue: { grossCents: s.gross, afterFeesCents: s.net, orders: s.n, cogsCents: cogs, listingFeesCents: fees },
+        simulated: { grossCents: sim.gross, afterFeesCents: sim.net, orders: sim.n },
+        // NET = what the (real) receipts left after Etsy + processing fees, minus every cost we incurred (image, llm, listing fees, per-sale COGS).
         netCents: s.net - total,
       };
     },

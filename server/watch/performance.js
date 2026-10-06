@@ -7,7 +7,15 @@
  */
 const { intEnv } = require('./util');
 
-async function runPerformanceWatch({ db, readers, alerts, state, log, env = process.env }) {
+async function runPerformanceWatch({ db, readers, alerts, state, log, env = process.env, hooks = {} }) {
+  // M3: bring published products up to date from Etsy and ingest new receipts first, so the stats below are about
+  // listings that are really live. A failure here is reported in the summary and never stops the watcher.
+  const pre = [];
+  for (const [name, fn] of [['reconcile', hooks.reconcile], ['sales sync', hooks.syncSales]]) {
+    if (typeof fn !== 'function') continue;
+    try { const r = await fn(); pre.push(`${name}: ${r && r.skipped ? 'skipped' : r && r.error ? 'error' : 'ok'}${r && r.newSales !== undefined ? ` (${r.newSales} new)` : ''}${r && r.live ? ` (${r.live} live)` : ''}`); }
+    catch (e) { pre.push(`${name}: failed (${e.message})`); log.warn(`[watch] ${name} failed: ${e.message}`); }
+  }
   const zeroViews = intEnv(env.WATCH_ZERO_SALES_VIEWS, 100);
   const dropPct = intEnv(env.WATCH_VIEW_DROP_PCT, 50);
   const minPrev = intEnv(env.WATCH_VIEW_DROP_MIN_PREV, 20);
@@ -22,7 +30,9 @@ async function runPerformanceWatch({ db, readers, alerts, state, log, env = proc
       const name = r.ptitle || r.ltitle || `Product ${r.product_id}`;
       const key = `perf.listing.${r.listing_id}`;
       const prev = state.get(key);
-      const views = Number(s.views) || 0, sales = Number(s.sales) || 0, favorites = Number(s.favorites) || 0;
+      // Etsy has no per-listing sales counter, so the real adapter reports sales: null and ingested sales are the source.
+      const ingested = db.prepare("SELECT COALESCE(SUM(quantity),0) AS n FROM sales WHERE listing_id = ? AND source != 'stub'").get(r.listing_id).n;
+      const views = Number(s.views) || 0, sales = Math.max(Number(s.sales) || 0, ingested), favorites = Number(s.favorites) || 0;
       const delta = prev ? Math.max(0, views - prev.views) : null;
       if (sales === 0 && views >= zeroViews) {
         zero++;
@@ -39,6 +49,6 @@ async function runPerformanceWatch({ db, readers, alerts, state, log, env = proc
       state.set(key, { views, sales, favorites, delta, at: new Date().toISOString() });
     } catch (e) { errors++; log.warn(`[watch] listing stats read failed for listing ${r.listing_id}: ${e.message}`); }
   }
-  return `checked ${checked} listing(s) [source: ${[...sources].join('+') || 'none'}]; zero-sales ${zero}, view drops ${drops}, read errors ${errors}`;
+  return `checked ${checked} listing(s) [source: ${[...sources].join('+') || 'none'}]; zero-sales ${zero}, view drops ${drops}, read errors ${errors}${pre.length ? `; ${pre.join('; ')}` : ''}`;
 }
 module.exports = { runPerformanceWatch };

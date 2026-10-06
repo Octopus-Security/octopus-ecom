@@ -287,7 +287,10 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
     id = Number(id);
     return exclusive(id, async () => {
       let p = need(id);
-      guardStage(p, [S.DESIGN, S.MOCKUP, S.FAILED], 'Creating the POD product');
+      // An ESTIMATED base cost may be replaced from any pre-publish stage (M3: publishing refuses estimates, and the
+      // operator re-runs this with live writes armed). Any other re-run is only for the early stages.
+      const reprice = p.pod_cost_source === 'estimate' && [S.DRAFTED, S.PENDING, S.APPROVED].includes(p.stage);
+      if (!reprice) guardStage(p, [S.DESIGN, S.MOCKUP, S.FAILED], 'Creating the POD product');
       if (!p.blueprint || !p.print_provider_id) throw new PipelineError('Choose a blueprint and print provider first', 409, 'no_blueprint');
       if (!Number.isInteger(p.list_price_cents) || p.list_price_cents <= 0) throw new PipelineError('Set a list price first (Printify needs one per variant)', 409, 'no_price');
       const design = db.prepare('SELECT * FROM designs WHERE product_id = ? ORDER BY id DESC LIMIT 1').get(id);
@@ -304,7 +307,10 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
           title: baseTitle(p), description: p.brief, imagePath: path.resolve(dataDir || '.', 'images', design.image_path),
           imageWidth: design.width, imageHeight: design.height, position: area.position, placeholder: { width: area.width, height: area.height },
         });
-      } catch (e) { throw failure(p, e, actor, 'POD product creation'); }
+      } catch (e) {
+        if (reprice) throw new PipelineError(`POD product re-creation failed: ${e.message}. The product keeps its stage.`, 502, 'pod_failed'); // do not fail an approved product over a retryable read
+        throw failure(p, e, actor, 'POD product creation');
+      }
 
       try {
         // Base cost: the product read-back is the only real source; then a real catalog read; else the stub estimate.
@@ -326,6 +332,13 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
         storeMockups(id, mockups);
         applyMargin(id);
         productEvent(db, id, { actor, note: `POD product ${res.faked ? '(faked, DRY_RUN) ' : ''}${res.externalId}: base cost ${(cost / 100).toFixed(2)} (${source}), ${mockups.length} mockup(s)${old && !String(old).startsWith('stub-') ? `; the earlier Printify product ${old} was left in the shop` : ''}${mockups.length ? '' : '; mockups not ready yet, use refresh'}` });
+        if (reprice) {
+          // The numbers the approval rested on changed: void it. approved -> PENDING_APPROVAL -> listing_drafted.
+          let q = p;
+          if (q.stage === S.APPROVED) q = stages.transition(id, S.PENDING, { actor, note: 'base cost changed; approval voided' });
+          if (q.stage === S.PENDING) q = stages.transition(id, S.DRAFTED, { actor, note: 'base cost changed; the product needs submitting and approving again' });
+          return q;
+        }
         return p.stage === S.MOCKUP ? get(id) : stages.transition(id, S.MOCKUP, { actor, note: 'POD product created' });
       } catch (e) { throw failure(p, e, actor, 'saving the POD product'); }
     });
@@ -430,13 +443,13 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
     }));
     const costs = db.prepare('SELECT id, kind, amount_cents AS amountCents, note, ts FROM costs WHERE product_id = ? ORDER BY id').all(p.id);
     const events = db.prepare('SELECT id, kind, stage_from AS stageFrom, stage_to AS stageTo, actor, note, ts FROM events WHERE product_id = ? ORDER BY id').all(p.id);
-    const l = db.prepare("SELECT * FROM listings WHERE product_id = ? AND platform = 'etsy' AND status = 'draft' ORDER BY id DESC LIMIT 1").get(p.id);
+    const l = db.prepare("SELECT * FROM listings WHERE product_id = ? AND platform = 'etsy' ORDER BY id DESC LIMIT 1").get(p.id); // the draft, or after publish the same row
     const copy = l ? { title: l.title, tags: JSON.parse(l.tags || '[]'), description: l.description, repairs: JSON.parse(l.repairs || '[]'), model: l.model, updatedAt: l.updated_at } : null;
     const mockups = db.prepare('SELECT * FROM mockups WHERE product_id = ? ORDER BY is_default DESC, id').all(p.id).map(m => ({ id: m.id, url: mockupUrl(m), placement: m.placement, isDefault: !!m.is_default }));
     return { product: { ...p, keywords: kw(p), flags: parseFlags(p), pod_variant_ids: parse(p.pod_variant_ids, []), print_spec: parse(p.print_spec, null) }, mockups, economics: unitEconomics(p), designs, costs, costTotalCents: costs.reduce((a, c) => a + c.amountCents, 0), events, copy };
   }
 
-  return { create, generateDesign, draftCopy, editCopy, detail, validateInput, PipelineError, selectPod, createPodProduct, refreshMockups, draftListing, setPrice, submit, approve, reject, archive, marginPreview, applyMargin };
+  return { create, generateDesign, draftCopy, editCopy, detail, validateInput, PipelineError, selectPod, createPodProduct, refreshMockups, draftListing, setPrice, submit, approve, reject, archive, marginPreview, applyMargin, exclusive, get, need, setFlag };
 }
 
 module.exports = { makePipeline, PipelineError, PRINT_W, PRINT_H };

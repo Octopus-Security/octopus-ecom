@@ -4,7 +4,7 @@ import AlertsTray from './watch/AlertsTray.jsx';
 
 export default function TopBar({ summary, onToggleDryRun, onSettings, onNew, view, onView, watchApi, onOpenPlaybook }) {
   if (!summary) return <header className="topbar"><strong>Shop</strong><span className="muted">loading...</span></header>;
-  const { spend, revenue, netCents, dryRun } = summary;
+  const { spend, revenue, netCents, dryRun, simulated } = summary;
   return (
     <header className="topbar">
       <strong className="brand">Shop</strong>
@@ -14,7 +14,7 @@ export default function TopBar({ summary, onToggleDryRun, onSettings, onNew, vie
       </button>
       <div className="stat"><span className="label">Spend</span><span>{dollars(spend.totalCents)}</span></div>
       <div className="stat"><span className="label">Revenue</span><span>{dollars(revenue.grossCents)}</span></div>
-      <div className={`stat ${netCents < 0 ? 'neg' : 'pos'}`}><span className="label">NET</span><span>{dollars(netCents)}</span></div>
+      <div className={`stat ${netCents < 0 ? 'neg' : 'pos'}`} title={`From ${revenue.orders} real receipt line(s) minus every cost (images, copy, listing fees, per-sale COGS)${simulated && simulated.orders ? `. ${simulated.orders} simulated line(s) are NOT included.` : ''}`}><span className="label">NET{revenue.orders === 0 ? ' (no sales yet)' : ''}</span><span>{dollars(netCents)}</span></div>
       <div className="stat cap">
         <span className="label">Daily cap {dollars(spend.todayCents)} / {dollars(spend.dailyCapCents)}</span>
         <div className={`meter ${spend.capReached ? 'full' : ''}`} role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={spend.capPct}>
@@ -22,7 +22,7 @@ export default function TopBar({ summary, onToggleDryRun, onSettings, onNew, vie
         </div>
       </div>
       <nav className="views" aria-label="View">
-        {[['board', 'Board'], ['watch', 'Watch'], ['playbooks', 'Playbooks']].map(([v, l]) => (
+        {[['board', 'Board'], ['sales', 'Sales'], ['watch', 'Watch'], ['playbooks', 'Playbooks']].map(([v, l]) => (
           <button key={v} className={`ghost ${view === v ? 'active' : ''}`} aria-pressed={view === v} onClick={() => onView(v)}>{l}</button>
         ))}
       </nav>

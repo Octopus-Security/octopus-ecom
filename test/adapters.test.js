@@ -8,7 +8,7 @@ const { CONTRACTS, assertAdapter, NotImplemented } = require('../server/adapters
 const { readPngSize } = require('../server/png');
 const { normalizeTags } = require('../server/domain/etsy-rules');
 
-test('every real adapter satisfies its contract; Printify is real now, Etsy (M3) is still a scaffold', () => {
+test('every real adapter satisfies its contract; Printify is real now, Etsy is real as of M3', () => {
   assertAdapter('imagegen', require('../server/adapters/imagegen/openai').createOpenAiImages());
   assertAdapter('listingcopy', require('../server/adapters/listingcopy/llm').createLlmCopy());
   const real = {
@@ -16,11 +16,11 @@ test('every real adapter satisfies its contract; Printify is real now, Etsy (M3)
     storefront: require('../server/adapters/storefront/etsy').createEtsy(),
   };
   for (const [k, impl] of Object.entries(real)) assertAdapter(k, impl);
-  assert.equal(real.pod.implemented, true); assert.equal(real.storefront.implemented, false);
+  assert.equal(real.pod.implemented, true); assert.equal(real.storefront.implemented, true);
   assertAdapter('pod', require('../server/adapters/pod/printful').createPrintful());
 });
 test('scaffolds throw NotImplemented', async () => {
-  await assert.rejects(require('../server/adapters/storefront/etsy').createEtsy().createListing(), NotImplemented);
+  await assert.rejects(require('../server/adapters/pod/printful').createPrintful().createProduct(), NotImplemented);
 });
 test('all five adapters work as stubs with no credentials', async () => {
   const d = makeDeps();
@@ -39,9 +39,9 @@ test('all five adapters work as stubs with no credentials', async () => {
   assert.equal((await a.pod.getMockups(prod.externalId)).length, 2);
   const mk = prod.mockups[0]; assert.deepEqual(readPngSize(fs.readFileSync(path.join(d.dataDir, 'mockups', mk.file))), { width: 600, height: 600 });
   assert.equal((await a.pod.publish(prod.externalId)).faked, true);
-  const l = await a.storefront.createListing({ title: 'x' });
-  assert.equal((await a.storefront.updateListing(l.id, { title: 'y' })).title, 'y');
-  assert.deepEqual(await a.storefront.getReceipts(), []);
+  const l = await a.storefront.createListing(null, { title: 'x' });
+  assert.equal((await a.storefront.updateListing(null, l.id, { title: 'y' })).title, 'y');
+  assert.deepEqual((await a.storefront.getReceipts(null)).receipts, []);
   const t = await a.trend.suggest('retro space cats');
   assert.deepEqual(t.keywords, ['retro', 'space', 'cats']);
   const c = await a.listingcopy.generate({}, 'retro space cats', ['retro', 'space', 'cats']);

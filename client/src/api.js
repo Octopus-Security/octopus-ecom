@@ -38,6 +38,17 @@ export const api = {
   setCredential: (name, value) => call('POST', '/api/settings/credentials', { name, value }),
   deleteCredential: (name, token) => call('DELETE', `/api/settings/credentials/${encodeURIComponent(name)}`, token ? { token } : {}),
   setDryRun: (b) => call('POST', '/api/settings/dry-run', b),
+  // M3: Etsy
+  etsyStatus: () => call('GET', '/api/etsy/status'),
+  etsyConnect: () => call('GET', '/api/etsy/connect'),
+  etsyRecheck: (sid) => call('POST', `/api/etsy/stores/${sid}/recheck`, {}),
+  etsyDisconnect: (sid, token) => call('POST', `/api/etsy/stores/${sid}/disconnect`, token ? { token } : {}),
+  etsyAutopublish: (sid, enabled, token) => call('POST', `/api/etsy/stores/${sid}/autopublish`, token ? { enabled, token } : { enabled }),
+  publish: (id, token) => call('POST', `/api/products/${id}/publish`, token ? { token } : {}),
+  refreshStatus: (id) => call('POST', `/api/products/${id}/refresh-status`, {}),
+  editListing: (id, b) => call('PATCH', `/api/products/${id}/listing`, b),
+  syncSales: () => call('POST', '/api/sales/sync', {}),
+  sales: () => call('GET', '/api/sales'),
 };
 
 export const dollars = (cents) => (cents === null || cents === undefined ? '-' : `${cents < 0 ? '-' : ''}$${(Math.abs(cents) / 100).toFixed(2)}`);

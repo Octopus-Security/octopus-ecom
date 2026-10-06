@@ -36,7 +36,8 @@ function gradientPng(w, h) {
 function fakeFetch(responder) {
   const calls = [];
   const fn = async (url, init = {}) => {
-    calls.push({ url, method: init.method, headers: init.headers, body: init.body ? JSON.parse(init.body) : undefined });
+    let body; if (init.body) { try { body = JSON.parse(init.body); } catch { body = init.body; } } // form bodies stay strings
+    calls.push({ url, method: init.method, headers: init.headers, body });
     const r = await responder(url, init, calls.length);
     const text = typeof r.body === 'string' ? r.body : JSON.stringify(r.body);
     return { status: r.status || 200, headers: { get: k => (r.headers || {})[k.toLowerCase()] ?? null }, text: async () => text };

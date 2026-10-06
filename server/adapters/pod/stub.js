@@ -60,6 +60,8 @@ function createStub({ dataDir } = {}) {
       products.set(externalId, { externalId, blueprintId, providerId, title, mockups, published: false, placeholder });
       return { externalId, variants, mockups, baseCostCents, faked: true, estimated: true };
     },
+    async getShopInfo() { return { id: 'stub-shop', title: 'Stub Printify shop', salesChannel: 'stub', stub: true }; },
+    async getPublishState(externalId) { return { isLocked: false, visible: true, externalId: `stub-etsy-${externalId}`, handle: null, stub: true }; },
     async getMockups(externalId) { const p = products.get(externalId); return p ? p.mockups : []; },
     async publish(externalId /*, storeRef */) {
       const p = products.get(externalId);

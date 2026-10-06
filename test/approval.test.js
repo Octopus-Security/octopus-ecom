@@ -132,12 +132,12 @@ test('cannot publish while PENDING_APPROVAL (or any stage but approved), and no 
   assert.equal((await get(id)).product.stage, 'PENDING_APPROVAL');
 });
 
-test('cannot publish while DRY_RUN is on: an approved product only gets a SIMULATED publish after confirm; stage unchanged; DRY_RUN off is 501 until M3', async () => {
+test('cannot publish while DRY_RUN is on: an approved product only gets a SIMULATED publish after confirm; stage unchanged; DRY_RUN off refuses a stub-only product', async () => {
   const id = await drafted(30); await j('POST', `/api/products/${id}/submit`, {});
   await approveFlow(id);
   assert.equal((await get(id)).product.stage, 'approved');
   const a = await j('POST', `/api/products/${id}/publish`, {});
-  assert.equal(a.body.needsConfirm, true); assert.match(a.body.summary, /only simulated/);
+  assert.equal(a.body.needsConfirm, true); assert.match(a.body.summary, /SIMULATED/);
   const b = await j('POST', `/api/products/${id}/publish`, { token: a.body.token });
   assert.equal(b.status, 200); assert.equal(b.body.faked, true); assert.equal(b.body.published, false);
   assert.equal((await get(id)).product.stage, 'approved', 'nothing was published, so the stage did not move');
@@ -145,8 +145,10 @@ test('cannot publish while DRY_RUN is on: an approved product only gets a SIMULA
   d.dryRun.isOn = () => false;
   try {
     const c = await j('POST', `/api/products/${id}/publish`, {});
-    const e = await j('POST', `/api/products/${id}/publish`, { token: c.body.token });
-    assert.equal(e.status, 501); assert.equal((await get(id)).product.stage, 'approved');
+    // M3: live, this product (a DRY_RUN stub with an estimated cost and no Etsy store) is refused BEFORE any token is issued.
+    assert.equal(c.status, 409); assert.equal(c.body.needsConfirm, undefined);
+    assert.ok(['no_pod_product', 'estimated_cost'].every(k => c.body.blockers.some(b => b.code === k)), JSON.stringify(c.body));
+    assert.equal((await get(id)).product.stage, 'approved');
   } finally { d.dryRun.isOn = () => true; }
 });
 

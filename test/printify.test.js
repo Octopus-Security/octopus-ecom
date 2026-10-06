@@ -96,7 +96,7 @@ test('createProduct: upload, then product body with print_areas/placeholders, th
   const ph = post.body.print_areas[0].placeholders[0];
   assert.equal(ph.position, 'front'); assert.deepEqual(ph.images[0], { id: 'img_1', x: 0.5, y: 0.5, scale: 1, angle: 0 });
   await assert.rejects(mk(fakePrintify()).createProduct({ blueprintId: 6, providerId: 29, variantIds: [101], listPriceCents: 0, imagePath: file }), /list price/);
-  await assert.rejects(mk(f).publish(), /M3/);
+  await assert.rejects(mk(f).publish(), /real Printify product id/);
 });
 
 test('catalog calls are paced under the documented 100/min (CATALOG_RPS), not the 600/min global', async () => {

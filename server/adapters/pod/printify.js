@@ -31,7 +31,7 @@
  *    verified 2026-10-05 — https://developers.printify.com/ (the `decoration_method` key on placeholders is
  *    shown in the docs; omitted here, assumed optional for single-method blueprints: unverified).
  *  - GET shops/{shop}/products/{id}.json                           verified 2026-10-05 — same page
- *  - POST shops/{shop}/products/{id}/publish.json                  verified 2026-10-05 — same page (M3 uses it)
+ *  - POST shops/{shop}/products/{id}/publish.json                  verified 2026-10-05 — same page (M3 uses it, see publish())
  *  - Image upload: POST uploads/images.json with {file_name, contents:<base64>} or {file_name, url}.
  *    The base64-or-URL choice was confirmed by a search summary of the API docs, the exact path, field names
  *    and the response shape (id,width,height,...) were NOT on the page I could read: assumed, unverified.
@@ -192,8 +192,48 @@ function createPrintify({ http, credentials, log = console, env = {}, now = Date
       const p = await api('GET', `/shops/${await shopId()}/products/${encodeURIComponent(externalId)}.json`);
       return mockupsOf(p);
     },
-    /** M3: POST shops/{shop}/products/{id}/publish.json. Signature only here; refuses so nothing can publish by accident. */
-    async publish(/* externalId, storeRef */) { throw new PrintifyError('pod.printify.publish is M3: not implemented in M2'); },
+    /**
+     * The Printify shop this integration publishes through: PRINTIFY_SHOP_ID or the only shop.
+     * -> {id, title, salesChannel}. `sales_channel` is the channel the shop is connected to ("disconnected" when none);
+     * that "etsy" is the value for an Etsy connection is assumed, unverified.
+     */
+    async getShopInfo() {
+      const shops = list(await api('GET', '/shops.json'));
+      let s;
+      if (env.PRINTIFY_SHOP_ID) s = shops.find(x => String(x.id) === String(env.PRINTIFY_SHOP_ID));
+      else if (shops.length === 1) s = shops[0];
+      else throw new PrintifyError(shops.length ? `the Printify account has ${shops.length} shops; set PRINTIFY_SHOP_ID` : 'the Printify account has no shop');
+      if (!s) throw new PrintifyError(`PRINTIFY_SHOP_ID ${env.PRINTIFY_SHOP_ID} is not a shop of this account`);
+      return { id: s.id, title: s.title || null, salesChannel: String(s.sales_channel || '').toLowerCase() || null };
+    },
+
+    /**
+     * publish(externalId, {title, description, tags}) — a WRITE: pushes the product to the connected sales channel.
+     * 1. PUT the final listing copy onto the Printify product (Printify publishes ITS copy of title/description/tags,
+     *    not ours). assumed, unverified: PUT shops/{shop}/products/{id}.json accepts {title, description, tags}.
+     * 2. POST shops/{shop}/products/{id}/publish.json with the section flags
+     *    {title, description, images, variants, tags, keyFeatures, shipping_template} all true.
+     *    verified 2026-10-05 — https://developers.printify.com/ for the path and the field NAMES; that the values are
+     *    booleans "publish this section" is assumed, unverified (the page, as summarised, listed names only).
+     * Publishing to Etsy is performed by Printify asynchronously: the product is `is_locked` meanwhile (verified, same
+     * page) and `external` {id, handle} appears once the channel confirms (verified field, same page; object-vs-array
+     * shape is not certain, both are read). 200 per 30 minutes limit applies (verified, same page).
+     */
+    async publish(externalId, o = {}) {
+      if (!externalId || String(externalId).startsWith('stub-')) throw new PrintifyError('publish needs a real Printify product id (this product only exists in DRY_RUN stubs)');
+      const sid = await shopId(); const id = encodeURIComponent(externalId);
+      const patch = {};
+      for (const k of ['title', 'description', 'tags']) if (o[k] !== undefined) patch[k] = o[k];
+      if (Object.keys(patch).length) await api('PUT', `/shops/${sid}/products/${id}.json`, { json: patch });
+      await api('POST', `/shops/${sid}/products/${id}/publish.json`, { json: { title: true, description: true, images: true, variants: true, tags: true, keyFeatures: true, shipping_template: true }, timeoutMs: 60000 });
+      return { ok: true, faked: false, externalId: String(externalId) };
+    },
+    /** Read-back after publish: {isLocked, visible, externalId|null, handle|null}. `external` may be an object or a one-element array. */
+    async getPublishState(externalId) {
+      const p = await api('GET', `/shops/${await shopId()}/products/${encodeURIComponent(externalId)}.json`);
+      const ext = Array.isArray(p.external) ? p.external[0] : p.external;
+      return { isLocked: Boolean(p.is_locked), visible: p.visible !== false, externalId: ext && ext.id ? String(ext.id) : null, handle: ext && ext.handle ? String(ext.handle) : null };
+    },
   };
 }
 module.exports = { createPrintify, PrintifyError, CATALOG_RPS, DEFAULT_MAX_UPLOAD };

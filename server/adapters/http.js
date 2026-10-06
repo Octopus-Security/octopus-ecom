@@ -30,15 +30,28 @@ function makeHttp({
   sleep = sleepReal, now = Date.now, random = Math.random,
   log = { info() {}, warn() {} },
   ratePerSec = 5, burst = 5, maxRetries = 4, baseDelayMs = 500, maxDelayMs = 30000, timeoutMs = 30000,
+  // Per-host overrides: { 'api.example.com': { ratePerSec, perDay } }. A call's own ratePerSec still wins.
+  // perDay is a LOCAL daily budget (rolling 24 h): once spent, requests to that host fail at once with a
+  // 429-shaped HttpError instead of burning a provider quota we can see coming.
+  hostLimits = {},
 } = {}) {
   const buckets = new Map();
+  const dayLog = new Map();
+  function spendDaily(host) {
+    const lim = hostLimits[host] && hostLimits[host].perDay;
+    if (!lim) return;
+    const t = now(); const arr = (dayLog.get(host) || []).filter(x => t - x < 86400000);
+    if (arr.length >= lim) { dayLog.set(host, arr); throw new HttpError(`local daily request budget for ${host} is spent (${lim}/24h); try again later`, { status: 429, host }); }
+    arr.push(t); dayLog.set(host, arr);
+  }
 
   async function take(host, rps) {
+    const cap = hostLimits[host] ? Math.min(burst, Math.max(1, Math.floor(rps))) : burst; // a limited host never bursts past one second's allowance
     let b = buckets.get(host);
-    if (!b) { b = { tokens: burst, at: now() }; buckets.set(host, b); }
+    if (!b) { b = { tokens: cap, at: now() }; buckets.set(host, b); }
     for (;;) {
       const t = now();
-      b.tokens = Math.min(burst, b.tokens + ((t - b.at) / 1000) * rps);
+      b.tokens = Math.min(cap, b.tokens + ((t - b.at) / 1000) * rps);
       b.at = t;
       if (b.tokens >= 1) { b.tokens -= 1; return; }
       await sleep(Math.ceil(((1 - b.tokens) / rps) * 1000));
@@ -69,7 +82,8 @@ function makeHttp({
     const where = `${method} ${u.host}${u.pathname}`; // no query string: it can carry tokens
 
     for (let attempt = 0; ; attempt++) {
-      await take(u.host, o.ratePerSec ?? ratePerSec);
+      spendDaily(u.host);
+      await take(u.host, o.ratePerSec ?? (hostLimits[u.host] && hostLimits[u.host].ratePerSec) ?? ratePerSec);
       let out; let err = null;
       try { out = await once(url, opts); } catch (e) { err = e; }
 

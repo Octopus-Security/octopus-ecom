@@ -1,4 +1,4 @@
-# Architecture (first draft, milestone M2, 2026-10-05)
+# Architecture (first draft, milestone M3, 2026-10-05)
 
 Where this and the code disagree, the code is right.
 
@@ -176,7 +176,7 @@ summariser, so shapes are as summarised.
 - **Rate limits.** Catalog calls are paced at 1.5/s (90/min against the documented 100/min); catalog responses are cached
   10 minutes; everything else uses the http.js default (5/s against 600/min). Publish (M3) must stay under 200/30 min.
 - **Shop.** `PRINTIFY_SHOP_ID`, else the account's only shop; zero or several shops is an explicit error.
-- `publish` is a signature that refuses: real publish is M3.
+- `publish` and `getPublishState` are real as of M3 (below).
 
 **Print requirements.** `selectPod` reads the chosen variants' placeholders and stores them on the product as
 `products.print_spec` (`{blueprint, providerId, positions:[{position,width,height}], source, fetchedAt}`); designs are generated
@@ -195,8 +195,71 @@ COGS ingested in M3, `listing_fee` is charged at publish (M3).
 refresh-mockups,draft-listing}`, `GET /api/pod/blueprints[/:bp/providers[/:pp/variants]]`, `GET /api/margin-preview`.
 `approve` is two-step (confirm token bound to the product AND its `updated_at`, so an edit voids it); the summary lists list price,
 base cost (flagged if an estimate), projected margin, flags and whether DRY_RUN is on. Only a human reaches the route; the agent
-rule lives in `transition()`. `POST .../publish` is an M2 stub of the guard: not `approved` -> 409 before any token is issued;
-confirm-gated; DRY_RUN on -> faked by the adapter router, the stage does not move; DRY_RUN off -> 501 until M3.
+rule lives in `transition()`. `POST .../publish` is the M3 path (below).
+
+### M3: Etsy, publish, sales
+
+Layout: `adapters/storefront/etsy.js` (HTTP adapter), `etsy/auth.js` (PKCE, state, tokens), `etsy/service.js` (store: connect,
+status, autopublish, disconnect), `etsy/publish.js` (publish, reconcile, listing edits), `etsy/sales.js` (ingest),
+`routes/etsy.js`. Provenance for every endpoint is in the header of `etsy.js` and `etsy/auth.js`: read 2026-10-05 from
+Etsy's published OpenAPI document (`https://www.etsy.com/openapi/generated/oas/3.0.0.json`) and the authentication and rate-limit
+pages on developers.etsy.com. Nothing has been run against a live Etsy shop.
+
+**Connect.** `GET /api/etsy/connect` (JSON `{url}`, or `?redirect=1`) creates a 32-byte `state` and a 64-byte PKCE verifier, stores
+the verifier SEALED in `oauth_pending` for 10 minutes, and returns Etsy's authorize URL (S256 challenge). `GET /api/etsy/callback`
+consumes the state (single use; unknown, reused and expired states are refused), exchanges the code with the verifier, seals the
+token pair in `stores.oauth_sealed`, reads the shop, and redirects to `/?etsy=connected|no_shop|error`. No credentials: the connect
+route answers 400 "No Etsy app credentials ..." and everything stays on stubs. Scopes: `listings_r listings_w transactions_r shops_r`
+and nothing else is needed (see `etsy/auth.js`). Access token 1 h, refresh token 90 days and rotating; refresh happens 2 min before expiry and on a 401,
+single-flight per store, and the new pair is saved before use. A refused refresh (400/401/403) marks the store `disconnected` with a
+message and drops the tokens; a 5xx does not. `x-api-key` is `keystring:shared_secret`.
+
+**No shop.** The store connects with status `no_shop` and the message "Open an Etsy shop first (Shop Manager -> open shop), then
+reconnect." Publish and sales sync refuse with that message; "Check shop" re-reads it with the saved tokens.
+
+**Publish (Printify -> Etsy).** `POST /api/products/:id/publish`: not `approved` -> 409 `not_approved`; with DRY_RUN off any failed
+precondition -> 409 with the named reason BEFORE a confirm token exists: a real Printify product (not a DRY_RUN stub), a base cost
+that is not an estimate, a list price, listing copy, a connected Etsy store WITH a shop, a Printify shop whose `sales_channel` is
+`etsy` and whose name matches the Etsy shop (Printify does not say which Etsy shop it is linked to, so the match is by name; override
+`ETSY_SKIP_PRINTIFY_SHOP_MATCH=1`). Then the two-step confirm (summary: shop, price, listing fee, projected margin, flags, "real
+marketplace, irreversible"). DRY_RUN on: confirm, then `{faked:true, liveBlockers:[...]}`, nothing sent, stage unchanged. Live: PUT the final
+copy to the Printify product, `publish.json` with all section flags, `approved -> published`, then look up the Etsy listing id
+(`PUBLISH_POLL_ATTEMPTS` x `PUBLISH_POLL_MS`) and read the listing back from Etsy. `reconcile` (also `POST .../refresh-status`, and run by
+the performance watcher) fills in the id when it appears late, writes the URL and Etsy's state, flags a listing found in a different
+Etsy shop, and moves `published -> live` when Etsy says `active`. **The Etsy listing fee (20 cents) is written to `costs` once, when the
+Etsy listing id is first known** (normally inside the publish call), not when `publish.json` is accepted: a publish that never produces
+a listing has not been charged. A Printify publish error leaves the product `approved`. The agent path (`publisher.publish(id,
+{actor:'agent'})`) additionally needs the store's autopublish on and no flags, and is refused under DRY_RUN. Re-running create-pod on an
+estimated-cost product (allowed from drafted/pending/approved) reads the real cost and steps the product back to `listing_drafted`,
+voiding the approval.
+
+**Edits.** `PATCH /api/products/:id/listing {title?, tags?, price?}` on a published product: `enforceCopy` and the blocklist run, title/tags
+go through `PATCH listing`, the price through the listing inventory (Etsy's updateListing has no price field), and a price change
+needs the confirm. DRY_RUN: faked, nothing sent or changed locally. Etsy prices may be overwritten by Printify on a re-publish.
+
+**Sales.** `POST /api/sales/sync` (and inside the performance watcher's run): paid receipts oldest-first from the cursor minus a 2-day
+overlap, one `sales` row per transaction, unique on (receipt id, transaction id). gross = unit price x qty + shipping. Fees: the API
+exposes ONLY the card processing fee (`Payment.amount_fees`), used when readable; the 6.5% transaction fee is always computed from
+`domain/fees.js`; `sales.fee_source` says which. A tracked listing also writes a `costs` row kind `pod` = base cost x qty in the same
+transaction; an untracked listing is kept at store level with COGS unknown (NULL). NET = real sales net minus every cost. Simulated
+sales (stub storefront) have `source='stub'`, write no COGS and are reported under `summary.simulated`, never in NET. The daily spend
+cap ignores `pod` and `listing_fee` costs: it governs generation. Not built: refunds (counted in the sync result, not subtracted).
+
+**Listing stats.** Etsy's `Listing.views` (tabulated daily, active listings only) and `num_favorers` ARE exposed;
+there is no per-listing sales counter, so `getListingStats` returns `sales: null` and the performance watcher counts ingested sales.
+
+**Rate limits.** Etsy's QPS/QPD are per key and not published in the docs (they show in the developer portal). `http.js` takes
+`hostLimits`; `api.etsy.com` is held to `ETSY_QPS` (default 4) and `ETSY_QPD` (default 4000 per rolling 24 h), both assumed, unverified
+defaults; `x-remaining-today` is logged when low.
+
+**Register the Etsy app and connect (operator steps).**
+1. On https://www.etsy.com/developers/your-apps create an app (personal access is enough for your own shop; commercial access is needed
+   to serve other sellers). Etsy reviews new apps; until it is approved the keystring may not work.
+2. Add the redirect URI exactly as `https://<this service's host>/api/etsy/callback` (set the same value as `ETSY_REDIRECT_URI`).
+3. In Settings -> Credentials save `etsy_api_key` (the keystring) and `etsy_shared_secret` (or set `ETSY_API_KEY` / `ETSY_SHARED_SECRET`).
+4. Etsy needs a shop: open one in Shop Manager first. In Printify, connect that Etsy shop to your Printify shop.
+5. Settings -> Stores -> Connect Etsy, approve the four scopes. The store should read "connected" with the shop name.
+6. For each product: arm live writes, re-run "create POD product" (reads the real base cost), submit, approve, then Publish.
 
 ## Credentials
 
@@ -252,6 +315,7 @@ events (`kind = 'system'`); `kind = 'note'` events belong to a product but are n
 
 ## Not yet built
 
-Etsy OAuth (M3; must implement `getListingStats(externalId) -> {views, favorites, sales}`, endpoint/scope assumed, unverified), the real publish path (Printify
-`publish.json` and the Etsy side) and receipt ingest (M3); clean-up of an orphaned Printify product when a design is regenerated after a live create, batch orchestrator, print-readiness enforcement and
-`docs/COMPLIANCE.md` (M4).
+Refund handling in the sales ingest, Etsy's transaction/listing fee as API fields (they are not exposed; computed instead),
+clean-up of an orphaned Printify product when a design is regenerated after a live create, the Etsy direct-create path
+(`createListing` is implemented but not wired to any route: it needs taxonomy, shipping profile and images), batch orchestrator,
+print-readiness enforcement and `docs/COMPLIANCE.md` (M4).

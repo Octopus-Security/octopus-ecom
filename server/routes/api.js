@@ -12,6 +12,7 @@ function actorOf() { return 'human'; } // every request here is an authenticated
 
 function router(deps) {
   const { db, credentials, keystore, settings, confirm, dryRun, spend, adapters, llm } = deps;
+  void productEvent;
   const r = express.Router();
 
   // GET /api/products — the board. Empty list is a normal answer.
@@ -68,7 +69,13 @@ function router(deps) {
   r.patch('/products/:id/copy', wrap(async (req, res) => {
     res.json({ ok: true, ...(await pipe.editCopy(req.params.id, req.body || {}, { actor: actorOf(req) })) });
   }));
-  r.get('/products/:id', wrap(async (req, res) => { out(res, 200, { ok: true, ...pipe.detail(req.params.id) }); }));
+  r.get('/products/:id', wrap(async (req, res) => {
+    const d = pipe.detail(req.params.id);
+    const l = deps.publisher.listingOf(d.product.id);
+    const published = l && l.status !== 'draft' ? { externalId: l.external_id, url: l.url, status: l.status, views: l.views, checkedAt: l.checked_at } : null;
+    const readiness = d.product.stage === S.APPROVED ? (await deps.publisher.prepare(d.product)) : null;
+    out(res, 200, { ok: true, ...d, published, publish: readiness && { blockers: readiness.blockers, dryRun: dryRun.isOn() } });
+  }));
 
 
   // ---- M2: POD catalog (reads: real when a Printify credential exists, even under DRY_RUN) ----------------
@@ -114,21 +121,8 @@ function router(deps) {
     res.json({ ok: true, product: await pipe.approve(p.id, { actor: actorOf(req) }) });
   }));
 
-  // POST /api/products/:id/publish — M2 STUB of the publish guard. Real publish is M3.
-  //   not `approved` -> 409 (so PENDING_APPROVAL can never publish); confirm-gated (irreversible);
-  //   DRY_RUN on -> the adapter fakes it, nothing is published, the stage does NOT move;
-  //   DRY_RUN off -> 501 until M3 wires Etsy.
-  r.post('/products/:id/publish', wrap(async (req, res) => {
-    const p = db.prepare('SELECT * FROM products WHERE id = ?').get(Number(req.params.id));
-    if (!p) return res.status(404).json({ error: 'Not found' });
-    if (p.stage !== S.APPROVED) return res.status(409).json({ error: `Only an approved product can be published; this one is ${p.stage}`, code: 'not_approved' });
-    const gate = confirm.check({ action: 'product.publish', subject: `${p.id}`, summary: `Publish product #${p.id} "${p.title || ''}". ${dryRun.isOn() ? 'DRY_RUN is on: this is only simulated and nothing goes live.' : 'This puts a real listing live and is irreversible by this app.'}` }, (req.body || {}).token);
-    if (gate.needsConfirm) return res.json(gate);
-    if (!dryRun.isOn()) return res.status(501).json({ error: 'Publishing to a real store arrives in M3; nothing was published.', code: 'not_implemented' });
-    const out = await adapters.pod.publish(p.pod_external_id, null); // faked by the router under DRY_RUN
-    productEvent(db, p.id, { actor: actorOf(req), note: 'publish simulated (DRY_RUN): nothing went live, stage unchanged' });
-    res.json({ ok: true, faked: true, published: false, stage: p.stage, result: out });
-  }));
+  // Publish, listing edits, Etsy connection and sales live in routes/etsy.js.
+  require('./etsy').mount(r, deps);
 
   r.get('/mockups/:id/file', wrap(async (req, res) => {
     const m = db.prepare('SELECT file FROM mockups WHERE id = ?').get(Number(req.params.id));

@@ -8,6 +8,7 @@ import ProductDrawer from './components/ProductDrawer.jsx';
 import ConfirmModal from './components/ConfirmModal.jsx';
 import { makeWatchApi } from './components/watch/watchApi.js';
 import WatchPanel from './components/watch/WatchPanel.jsx';
+import SalesView from './components/SalesView.jsx';
 import PlaybooksView from './components/playbooks/PlaybooksView.jsx';
 
 export default function App() {
@@ -18,7 +19,8 @@ export default function App() {
   const [composer, setComposer] = useState(false);
   const [openId, setOpenId] = useState(null);
   const watchApi = useMemo(() => makeWatchApi(), []);
-  const [view, setView] = useState('board'); // 'board' | 'watch' | 'playbooks'
+  const [view, setView] = useState('board'); // 'board' | 'sales' | 'watch' | 'playbooks'
+  const [flash, setFlash] = useState(''); // outcome of an Etsy connect round-trip (?etsy=...)
   const [pb, setPb] = useState({ id: null, productId: 0 });
   const [confirm, setConfirm] = useState(null); // {summary, phrase?, run(token, typed)}
 
@@ -27,6 +29,15 @@ export default function App() {
       const [s, b] = await Promise.all([api.summary(), api.products()]);
       setSummary(s); setBoard(b); setError('');
     } catch (e) { setError(e.message); }
+  }, []);
+
+  useEffect(() => {
+    // Etsy redirects back to /?etsy=connected|no_shop|error&msg=...: show it once, open Stores, clean the URL.
+    const q = new URLSearchParams(window.location.search); const e = q.get('etsy');
+    if (!e) return;
+    setFlash(e === 'connected' ? 'Etsy connected.' : e === 'no_shop' ? 'Etsy connected, but this account has no shop. Open an Etsy shop first (Shop Manager → open shop), then reconnect.' : `Etsy connection failed: ${q.get('msg') || 'unknown error'}`);
+    setDrawer(true);
+    window.history.replaceState({}, '', window.location.pathname);
   }, []);
 
   useEffect(() => { refresh(); const t = setInterval(refresh, 15000); return () => clearInterval(t); }, [refresh]);
@@ -50,7 +61,9 @@ export default function App() {
         view={view} onView={setView} watchApi={watchApi}
         onOpenPlaybook={(id, productId) => { setPb({ id, productId: productId || 0 }); setView('playbooks'); }} />
       {error && <div className="banner error" role="alert">{error}</div>}
+      {flash && <div className="banner warn-banner" role="status">{flash} <button className="ghost" onClick={() => setFlash('')}>Dismiss</button></div>}
       {view === 'board' && <Board board={board} onOpen={setOpenId} />}
+      {view === 'sales' && <SalesView onChanged={refresh} />}
       {view === 'watch' && <WatchPanel api={watchApi} />}
       {view === 'playbooks' && <PlaybooksView api={watchApi} initialId={pb.id} initialProductId={pb.productId}
         products={board ? Object.values(board.columns).flat().map(p => ({ id: p.id, title: p.title })) : []} />}

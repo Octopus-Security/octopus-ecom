@@ -46,7 +46,7 @@ test('turning DRY_RUN back ON needs no confirm', () => {
 test('under DRY_RUN adapter writes are faked, reads can still be real; scaffolds are never chosen', async () => {
   const { routeAdapter } = require('../server/adapters/route');
   const calls = [];
-  const mk = (tag) => ({ implemented: true, listBlueprints: async () => calls.push(`${tag}.read`), listPrintProviders: async () => 0, listVariants: async () => 0, getVariantCosts: async () => 0, getAvailability: async () => 0, createProduct: async () => calls.push(`${tag}.write`), getMockups: async () => 0, publish: async () => 0 });
+  const mk = (tag) => ({ implemented: true, listBlueprints: async () => calls.push(`${tag}.read`), listPrintProviders: async () => 0, listVariants: async () => 0, getVariantCosts: async () => 0, getAvailability: async () => 0, createProduct: async () => calls.push(`${tag}.write`), getMockups: async () => 0, getShopInfo: async () => 0, getPublishState: async () => 0, publish: async () => 0 });
   let dry = true;
   const a = routeAdapter({ kind: 'pod', stub: mk('stub'), real: mk('real'), hasCredential: () => true, isDryRun: () => dry, log: { info() {} } });
   await a.listBlueprints(); await a.createProduct();
