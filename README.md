@@ -29,10 +29,10 @@ Operator playbooks (checklists for margin drops, stock-outs, etc.) live in `docs
 
 ## Status
 
-Milestone M1: everything from M0 plus the **New product** composer (brief, niche,
-keywords, list price -> generate design -> auto-draft Etsy copy), board cards with
-thumbnail, cost and flags, and a detail drawer with regenerate (edit the brief) and
-copy editing with live Etsy-limit counters. With an OpenAI key (panel Settings or
-`OPENAI_API_KEY`) generation is real (BYOK, governed by the daily spend cap) even in
-dry-run; without one it is stubbed. Print-on-demand, Etsy publishing and the batch
-orchestrator arrive in later milestones. See `ARCHITECTURE.md`.
+Milestone M2: everything from M1 plus a Printify adapter (catalog reads are real once
+`PRINTIFY_API_TOKEN` is set, product creation is faked under dry-run), a composer that picks
+blueprint, print provider and variants with a live projected margin, mockups on the card and
+drawer, and an approval gate (submit, two-step confirmed approve, reject, archive). Publishing
+to a real store arrives in M3, the batch orchestrator and print-readiness check in M4.
+Generation is real with an OpenAI key (BYOK, daily cap) even in dry-run; otherwise stubbed.
+See `ARCHITECTURE.md`.

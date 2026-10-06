@@ -36,8 +36,8 @@ function createDeps(cfg, { secret, env = process.env, dbFile, out, authOptions, 
   const stages = makeStages({ db, isDryRun: dryRun.isOn });
   const auth = buildAuth(cfg, { log, ...(authOptions || {}) });
   const llm = makeLlm({ cfg, credentials, http, spend, log, env, requireFn });
-  const adapters = buildAdapters({ cfg, credentials, keystore, isDryRun: dryRun.isOn, log, llm, http, spend, upscale });
-  const pipeline = makePipeline({ db, stages, adapters, spend, log });
+  const adapters = buildAdapters({ cfg, env, credentials, keystore, isDryRun: dryRun.isOn, log, llm, http, spend, upscale });
+  const pipeline = makePipeline({ db, stages, adapters, spend, settings, dataDir: cfg.dataDir, isDryRun: dryRun.isOn, log });
   const watch = makeWatchService({ db, settings, adapters, log, env });
   return { watch, pipeline, http, cfg, db, keystore, credentials, redactor, log, settings, confirm, dryRun, spend, stages, auth, llm, adapters };
 }

@@ -3,7 +3,8 @@ const express = require('express');
 const fs = require('node:fs');
 const path = require('node:path');
 const { wrap } = require('../auth');
-const { STAGES, parseFlags } = require('../domain/stages');
+const { STAGES, S, parseFlags, approvalSummary } = require('../domain/stages');
+const { productEvent } = require('../events');
 const { ConfirmError } = require('../confirm');
 const { KEY_NAMES } = require('../keystore');
 
@@ -20,8 +21,11 @@ function router(deps) {
              (SELECT id FROM designs d WHERE d.product_id = p.id ORDER BY d.id DESC LIMIT 1) AS design_id,
              (SELECT width FROM designs d WHERE d.product_id = p.id ORDER BY d.id DESC LIMIT 1) AS design_w,
              (SELECT height FROM designs d WHERE d.product_id = p.id ORDER BY d.id DESC LIMIT 1) AS design_h,
+             (SELECT id FROM mockups m WHERE m.product_id = p.id ORDER BY m.is_default DESC, m.id LIMIT 1) AS mockup_id,
+             (SELECT CASE WHEN file IS NOT NULL THEN NULL ELSE url END FROM mockups m WHERE m.product_id = p.id ORDER BY m.is_default DESC, m.id LIMIT 1) AS mockup_url,
              (SELECT COALESCE(SUM(amount_cents),0) FROM costs c WHERE c.product_id = p.id) AS cost_cents
       FROM products p LEFT JOIN stores s ON s.id = p.store_id ORDER BY p.updated_at DESC`).all();
+    const floor = settings.getInt('margin_floor_cents', 200);
     const columns = Object.fromEntries(STAGES.map(s => [s, []]));
     for (const p of rows) {
       (columns[p.stage] || (columns[p.stage] = [])).push({
@@ -29,7 +33,9 @@ function router(deps) {
         modelUsed: p.model_used, projectedMarginCents: p.projected_margin_cents, listPriceCents: p.list_price_cents,
         flags: parseFlags(p), failedReason: p.failed_reason,
         costCents: p.cost_cents, designSize: p.design_id ? `${p.design_w}x${p.design_h}` : null,
-        thumbnail: p.design_id ? `/api/images/${p.design_id}` : null, updatedAt: p.updated_at,
+        thumbnail: p.mockup_id ? (p.mockup_url || `/api/mockups/${p.mockup_id}/file`) : p.design_id ? `/api/images/${p.design_id}` : null,
+        thumbnailKind: p.mockup_id ? 'mockup' : p.design_id ? 'design' : null,
+        podBaseCostCents: p.pod_base_cost_cents, podCostSource: p.pod_cost_source, marginFloorCents: floor, updatedAt: p.updated_at,
       });
     }
     res.json({ stages: STAGES, columns, count: rows.length });
@@ -41,8 +47,14 @@ function router(deps) {
 
   // POST /api/products {brief, niche, keywords[], listPrice (dollars), blueprint, printProviderId} -> the new idea
   r.post('/products', wrap(async (req, res) => {
-    const p = pipe.create(req.body || {}, { actor: actorOf(req) });
-    res.status(201).json({ ok: true, product: p });
+    const b = req.body || {};
+    let p = pipe.create(b, { actor: actorOf(req) });
+    let podError = null;
+    if (b.blueprint && b.printProviderId) {
+      try { p = await pipe.selectPod(p.id, { blueprint: b.blueprint, providerId: b.printProviderId, variantIds: b.variantIds }); }
+      catch (e) { podError = e.message; } // the idea exists; the operator can pick again
+    }
+    res.status(201).json({ ok: true, product: p, ...(podError ? { podError } : {}) });
   }));
   // POST /api/products/:id/generate-design {brief?}   (a brief = the operator edited it = regenerate)
   r.post('/products/:id/generate-design', wrap(async (req, res) => {
@@ -57,6 +69,74 @@ function router(deps) {
     res.json({ ok: true, ...(await pipe.editCopy(req.params.id, req.body || {}, { actor: actorOf(req) })) });
   }));
   r.get('/products/:id', wrap(async (req, res) => { out(res, 200, { ok: true, ...pipe.detail(req.params.id) }); }));
+
+
+  // ---- M2: POD catalog (reads: real when a Printify credential exists, even under DRY_RUN) ----------------
+  const slim = (a, n) => (Array.isArray(a) ? a.slice(0, n) : a);
+  r.get('/pod/blueprints', wrap(async (_req, res) => {
+    const list = await adapters.pod.listBlueprints();
+    res.json({ ok: true, source: adapters.pod.describe().methods.listBlueprints, total: list.length, blueprints: slim(list, 2000) });
+  }));
+  r.get('/pod/blueprints/:bp/providers', wrap(async (req, res) => {
+    res.json({ ok: true, providers: await adapters.pod.listPrintProviders(req.params.bp) });
+  }));
+  r.get('/pod/blueprints/:bp/providers/:pp/variants', wrap(async (req, res) => {
+    const v = await adapters.pod.listVariants(req.params.bp, req.params.pp);
+    res.json({ ok: true, source: v.source, note: v.source === 'printify' ? 'Printify does not expose base costs in the catalog; the real cost is read from the product after it is created.' : undefined, variants: v.variants });
+  }));
+  // GET /api/margin-preview?listPrice=<cents>&baseCost=<cents>&shipping=<cents> — the composer's live margin.
+  r.get('/margin-preview', wrap(async (req, res) => {
+    const n = k => (req.query[k] === undefined ? undefined : Number(req.query[k]));
+    res.json({ ok: true, ...pipe.marginPreview({ listPriceCents: n('listPrice'), shippingCents: n('shipping') ?? 0, podBaseCostCents: n('baseCost') }) });
+  }));
+
+  r.post('/products/:id/pod', wrap(async (req, res) => {
+    const b = req.body || {};
+    res.json({ ok: true, product: await pipe.selectPod(req.params.id, { blueprint: b.blueprint, providerId: b.printProviderId, variantIds: b.variantIds }) });
+  }));
+  r.post('/products/:id/create-pod', wrap(async (req, res) => { res.json({ ok: true, product: await pipe.createPodProduct(req.params.id, { actor: actorOf(req) }) }); }));
+  r.post('/products/:id/refresh-mockups', wrap(async (req, res) => { res.json({ ok: true, product: await pipe.refreshMockups(req.params.id, { actor: actorOf(req) }) }); }));
+  r.post('/products/:id/draft-listing', wrap(async (req, res) => { res.json({ ok: true, product: await pipe.draftListing(req.params.id, { actor: actorOf(req) }) }); }));
+  r.patch('/products/:id/price', wrap(async (req, res) => { res.json({ ok: true, product: await pipe.setPrice(req.params.id, req.body || {}, { actor: actorOf(req) }) }); }));
+  r.post('/products/:id/submit', wrap(async (req, res) => { res.json({ ok: true, product: await pipe.submit(req.params.id, { actor: actorOf(req) }) }); }));
+  r.post('/products/:id/reject', wrap(async (req, res) => { res.json({ ok: true, product: await pipe.reject(req.params.id, { actor: actorOf(req), note: String((req.body || {}).note || '').slice(0, 500) }) }); }));
+  r.post('/products/:id/archive', wrap(async (req, res) => { res.json({ ok: true, product: await pipe.archive(req.params.id, { actor: actorOf(req), note: String((req.body || {}).note || '').slice(0, 500) }) }); }));
+
+  // POST /api/products/:id/approve — two-step confirm. Only a human reaches this route (actorOf is always 'human');
+  // the agent rule (autopublish on, DRY_RUN off, no flags) is enforced in stages.transition() for any other caller.
+  // The confirm token is bound to the product AND its updated_at, so an edit after the summary was shown voids it.
+  r.post('/products/:id/approve', wrap(async (req, res) => {
+    const p = db.prepare('SELECT * FROM products WHERE id = ?').get(Number(req.params.id));
+    if (!p) return res.status(404).json({ error: 'Not found' });
+    if (p.stage !== S.PENDING) return res.status(409).json({ error: `Only a PENDING_APPROVAL product can be approved; this one is ${p.stage}`, code: 'illegal_stage' });
+    const gate = confirm.check({ action: 'product.approve', subject: `${p.id}:${p.updated_at}`, summary: approvalSummary(p, { dryRun: dryRun.isOn() }) }, (req.body || {}).token);
+    if (gate.needsConfirm) return res.json(gate);
+    res.json({ ok: true, product: await pipe.approve(p.id, { actor: actorOf(req) }) });
+  }));
+
+  // POST /api/products/:id/publish — M2 STUB of the publish guard. Real publish is M3.
+  //   not `approved` -> 409 (so PENDING_APPROVAL can never publish); confirm-gated (irreversible);
+  //   DRY_RUN on -> the adapter fakes it, nothing is published, the stage does NOT move;
+  //   DRY_RUN off -> 501 until M3 wires Etsy.
+  r.post('/products/:id/publish', wrap(async (req, res) => {
+    const p = db.prepare('SELECT * FROM products WHERE id = ?').get(Number(req.params.id));
+    if (!p) return res.status(404).json({ error: 'Not found' });
+    if (p.stage !== S.APPROVED) return res.status(409).json({ error: `Only an approved product can be published; this one is ${p.stage}`, code: 'not_approved' });
+    const gate = confirm.check({ action: 'product.publish', subject: `${p.id}`, summary: `Publish product #${p.id} "${p.title || ''}". ${dryRun.isOn() ? 'DRY_RUN is on: this is only simulated and nothing goes live.' : 'This puts a real listing live and is irreversible by this app.'}` }, (req.body || {}).token);
+    if (gate.needsConfirm) return res.json(gate);
+    if (!dryRun.isOn()) return res.status(501).json({ error: 'Publishing to a real store arrives in M3; nothing was published.', code: 'not_implemented' });
+    const out = await adapters.pod.publish(p.pod_external_id, null); // faked by the router under DRY_RUN
+    productEvent(db, p.id, { actor: actorOf(req), note: 'publish simulated (DRY_RUN): nothing went live, stage unchanged' });
+    res.json({ ok: true, faked: true, published: false, stage: p.stage, result: out });
+  }));
+
+  r.get('/mockups/:id/file', wrap(async (req, res) => {
+    const m = db.prepare('SELECT file FROM mockups WHERE id = ?').get(Number(req.params.id));
+    const root = path.resolve(deps.cfg.dataDir, 'mockups');
+    const file = m && m.file ? path.resolve(root, m.file) : null;
+    if (!file || !file.startsWith(root + path.sep) || !fs.existsSync(file)) return res.status(404).json({ error: 'Not found' });
+    res.set('Cache-Control', 'private, max-age=3600').type('png').sendFile(file);
+  }));
 
   // GET /api/summary — spend, revenue, NET, daily cap, and what is stubbed.
   r.get('/summary', wrap(async (_req, res) => {

@@ -8,18 +8,19 @@ const { CONTRACTS, assertAdapter, NotImplemented } = require('../server/adapters
 const { readPngSize } = require('../server/png');
 const { normalizeTags } = require('../server/domain/etsy-rules');
 
-test('every real adapter satisfies its contract; the M2/M3 ones are still scaffolds', () => {
+test('every real adapter satisfies its contract; Printify is real now, Etsy (M3) is still a scaffold', () => {
   assertAdapter('imagegen', require('../server/adapters/imagegen/openai').createOpenAiImages());
   assertAdapter('listingcopy', require('../server/adapters/listingcopy/llm').createLlmCopy());
   const real = {
     pod: require('../server/adapters/pod/printify').createPrintify(),
     storefront: require('../server/adapters/storefront/etsy').createEtsy(),
   };
-  for (const [k, impl] of Object.entries(real)) { assertAdapter(k, impl); assert.equal(impl.implemented, false, k); }
+  for (const [k, impl] of Object.entries(real)) assertAdapter(k, impl);
+  assert.equal(real.pod.implemented, true); assert.equal(real.storefront.implemented, false);
   assertAdapter('pod', require('../server/adapters/pod/printful').createPrintful());
 });
 test('scaffolds throw NotImplemented', async () => {
-  await assert.rejects(require('../server/adapters/pod/printify').createPrintify().createProduct(), NotImplemented);
+  await assert.rejects(require('../server/adapters/storefront/etsy').createEtsy().createListing(), NotImplemented);
 });
 test('all five adapters work as stubs with no credentials', async () => {
   const d = makeDeps();
@@ -31,10 +32,12 @@ test('all five adapters work as stubs with no credentials', async () => {
   const buf = fs.readFileSync(path.join(d.dataDir, 'images', img.images[0].file));
   assert.deepEqual(readPngSize(buf), { width: 640, height: 480 });
   const bps = await a.pod.listBlueprints();
-  assert.ok(bps[0].printArea.width > 0);
-  const prod = await a.pod.createProduct({ blueprintId: 'stub-tee', providerId: 'stub-pp', title: 't' });
-  assert.equal(prod.faked, true);
-  assert.equal((await a.pod.getMockups(prod.externalId)).length, 1);
+  const vs = (await a.pod.listVariants('stub-tee', 'stub-pp')).variants;
+  assert.ok(vs[0].placeholders[0].width > 0);
+  const prod = await a.pod.createProduct({ blueprintId: 'stub-tee', providerId: 'stub-pp', title: 't', variantIds: [vs[0].id] });
+  assert.equal(prod.faked, true); assert.equal(prod.estimated, true);
+  assert.equal((await a.pod.getMockups(prod.externalId)).length, 2);
+  const mk = prod.mockups[0]; assert.deepEqual(readPngSize(fs.readFileSync(path.join(d.dataDir, 'mockups', mk.file))), { width: 600, height: 600 });
   assert.equal((await a.pod.publish(prod.externalId)).faked, true);
   const l = await a.storefront.createListing({ title: 'x' });
   assert.equal((await a.storefront.updateListing(l.id, { title: 'y' })).title, 'y');
@@ -44,10 +47,10 @@ test('all five adapters work as stubs with no credentials', async () => {
   const c = await a.listingcopy.generate({}, 'retro space cats', ['retro', 'space', 'cats']);
   assert.ok(c.title.length <= 140); assert.ok(c.tags.length <= 13); assert.deepEqual(c.tags, normalizeTags(c.tags));
 });
-test('a real credential does not select an unimplemented real adapter; OpenAI key selects imagegen + listingcopy', () => {
+test('a Printify token selects real READS only (writes stay faked under DRY_RUN); an unimplemented Etsy adapter is never chosen; OpenAI key selects imagegen + listingcopy', () => {
   const d = makeDeps({ PRINTIFY_API_TOKEN: 'tok-printify-123456789', OPENAI_API_KEY: 'sk-' + 'q'.repeat(40) });
   const by = Object.fromEntries(d.adapters.describe().map(x => [x.kind, x]));
-  assert.equal(by.pod.realReady, false); assert.equal(by.storefront.realReady, false); assert.equal(by.trend.realReady, false);
+  assert.equal(by.pod.realReady, true); assert.equal(by.pod.methods.createProduct, 'stub', 'DRY_RUN fakes the write'); assert.equal(by.pod.methods.listBlueprints, 'real'); assert.equal(by.storefront.realReady, false); assert.equal(by.trend.realReady, false);
   assert.equal(by.imagegen.realReady, true); assert.equal(by.imagegen.methods.generate, 'real'); // spend: real even in DRY_RUN
   assert.equal(by.listingcopy.realReady, true);
 });

@@ -58,12 +58,15 @@ const parseFlags = p => { try { return JSON.parse(p.flags || '[]'); } catch { re
 function canTransition(from, to) { return (TRANSITIONS[from] || []).includes(to); }
 
 /** What a human is being asked to approve; listed in the confirm summary. */
-function approvalSummary(product) {
+function approvalSummary(product, { dryRun } = {}) {
   const flags = parseFlags(product);
   const m = product.projected_margin_cents;
+  const usd = c => (c === null || c === undefined ? 'unknown' : `${(c / 100).toFixed(2)} ${product.currency || 'USD'}`);
   const lines = [`Approve product #${product.id}${product.title ? ` "${product.title}"` : ''} for publishing.`];
-  if (m !== null && m !== undefined) lines.push(`Projected unit margin: ${(m / 100).toFixed(2)} ${product.currency || 'USD'}.`);
+  lines.push(`List price ${usd(product.list_price_cents)}; POD base cost ${usd(product.pod_base_cost_cents)}${product.pod_cost_source === 'estimate' ? ' (an ESTIMATE, not a Printify price)' : ''}.`);
+  if (m !== null && m !== undefined) lines.push(`Projected unit margin: ${usd(m)}.`);
   if (flags.length) lines.push(`FLAGGED: ${flags.map(f => f.code + (f.detail ? ` (${f.detail})` : '')).join('; ')}.`);
+  if (dryRun) lines.push('DRY_RUN is on: nothing real will be published until live writes are armed.');
   lines.push('Publishing afterwards is irreversible by this app.');
   return lines.join(' ');
 }

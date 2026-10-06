@@ -1,4 +1,4 @@
-# Architecture (first draft, milestone M1, 2026-10-05)
+# Architecture (first draft, milestone M2, 2026-10-05)
 
 Where this and the code disagree, the code is right.
 
@@ -103,7 +103,7 @@ move the product to `failed`; they never crash the process.
 
 As of M1, **ImageGen** (OpenAI Images) and **ListingCopy** (via the LLM interface) have real
 implementations and are chosen whenever a key exists, even in DRY_RUN (generation is spend, not a
-marketplace write). Printify (M2), Etsy (M3) and trend research remain stubs/scaffolds; Printful is a
+marketplace write). Printify is real as of M2 (below); Etsy (M3) and trend research remain stubs/scaffolds; Printful is a
 signature-only scaffold that stays unimplemented.
 
 ### M1: image generation, copy, pipeline
@@ -152,6 +152,51 @@ generate-design). One operation per product at a time.
 **API.** `POST /api/products`, `POST /api/products/:id/generate-design` (a `brief` in the body =
 regenerate with an edited brief), `POST /api/products/:id/draft-copy`, `PATCH /api/products/:id/copy`,
 `GET /api/products/:id`, `GET /api/images/:id` (authenticated like everything under `/api`).
+
+### M2: Printify, mockups, margin, approval
+
+**Printify adapter (`adapters/pod/printify.js`).** Every endpoint and shape carries its provenance in the file
+header: `verified 2026-10-05 — https://developers.printify.com/` where that page was read (base URL, Bearer auth and
+required `User-Agent`, limits of 600/min global, 100/min catalog and 200 per 30 min for publishing, shops, catalog
+blueprints / print providers / variants with placeholder pixel sizes, product create/get/publish paths, the read-only
+variant `cost` and the mock-up `images`) and `assumed, unverified` where it was not (the exact upload path and response
+shape, image placement semantics `x/y/scale`, and the `?show-out-of-stock=1` availability trick). The page was read through a
+summariser, so shapes are as summarised.
+
+- **Where the base cost lives.** Not in the catalog: the variants endpoint carries no pricing. It is the read-only `cost`
+  (cents) of each variant on a *product*. So a real base cost requires a real product, which is a WRITE. Under DRY_RUN
+  there is no Printify product, the base cost is a stub **estimate** (`products.pod_cost_source = 'estimate'`), the card
+  says "(est.)", and the product carries a `pod_cost_estimated` flag (which blocks agent approval, like any flag). With
+  live writes armed the cost is read back from the created product (`printify_product`). Catalog reads (blueprints,
+  providers, variants, print-area pixels, availability) are real whenever a token exists, even in DRY_RUN.
+- **Upload.** `contents` is base64 in a JSON body (a ~28 MB PNG is ~37 MB on the wire; the timeout is raised to 180 s).
+  The limit is `PRINTIFY_MAX_UPLOAD_BYTES` (default 100 MB, the help-centre figure for PNG/JPEG, not confirmed for the API).
+  Over the limit, or a 413 from Printify, fails with an explicit message and the product goes to `failed`: the image is
+  never downscaled because that would break print readiness.
+- **Rate limits.** Catalog calls are paced at 1.5/s (90/min against the documented 100/min); catalog responses are cached
+  10 minutes; everything else uses the http.js default (5/s against 600/min). Publish (M3) must stay under 200/30 min.
+- **Shop.** `PRINTIFY_SHOP_ID`, else the account's only shop; zero or several shops is an explicit error.
+- `publish` is a signature that refuses: real publish is M3.
+
+**Print requirements.** `selectPod` reads the chosen variants' placeholders and stores them on the product as
+`products.print_spec` (`{blueprint, providerId, positions:[{position,width,height}], source, fetchedAt}`); designs are generated
+for the first position's size. The M4 print-readiness check reads this; it is not built yet.
+
+**Pipeline.** `design_generated -> (create-pod) mockup_ready -> (draft-listing: copy if absent, margin) listing_drafted ->
+(submit) PENDING_APPROVAL -> (approve) approved`. Projected margin and its `margin_*` flags use `domain/fees.js`
+`projectMargin`/`marginFlags` and the `margin_floor_cents` setting, the same functions as the supplier watcher. Flags have a
+`source` (`pipeline` or `watch`); each writer replaces only its own code prefix.
+
+**Money decision.** The POD base cost is per-unit COGS paid when a unit sells, not spend at draft time: no `costs` row is
+written and it never counts toward the daily cap; it only feeds projected margin. `costs.kind='pod'` is reserved for per-sale
+COGS ingested in M3, `listing_fee` is charged at publish (M3).
+
+**Approval gate (API).** `POST /api/products/:id/{submit,approve,reject,archive}`, `PATCH .../price`, `POST .../{pod,create-pod,
+refresh-mockups,draft-listing}`, `GET /api/pod/blueprints[/:bp/providers[/:pp/variants]]`, `GET /api/margin-preview`.
+`approve` is two-step (confirm token bound to the product AND its `updated_at`, so an edit voids it); the summary lists list price,
+base cost (flagged if an estimate), projected margin, flags and whether DRY_RUN is on. Only a human reaches the route; the agent
+rule lives in `transition()`. `POST .../publish` is an M2 stub of the guard: not `approved` -> 409 before any token is issued;
+confirm-gated; DRY_RUN on -> faked by the adapter router, the stage does not move; DRY_RUN off -> 501 until M3.
 
 ## Credentials
 
@@ -207,6 +252,6 @@ events (`kind = 'system'`); `kind = 'note'` events belong to a product but are n
 
 ## Not yet built
 
-Printify (M2; must implement `getAvailability`, and `getVariantCosts` returning `{variants:[{id,title,costCents}]}`), Etsy OAuth (M3; must implement `getListingStats(externalId) -> {views, favorites, sales}`, endpoint/scope assumed, unverified), publish path and
-receipt ingest (M3), batch orchestrator, print-readiness enforcement and
+Etsy OAuth (M3; must implement `getListingStats(externalId) -> {views, favorites, sales}`, endpoint/scope assumed, unverified), the real publish path (Printify
+`publish.json` and the Etsy side) and receipt ingest (M3); clean-up of an orphaned Printify product when a design is regenerated after a live create, batch orchestrator, print-readiness enforcement and
 `docs/COMPLIANCE.md` (M4).

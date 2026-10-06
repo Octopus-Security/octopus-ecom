@@ -115,6 +115,14 @@ function migrate(db) {
   addColumn(db, 'listings', 'repairs', "TEXT NOT NULL DEFAULT '[]'");          // JSON: what enforceCopy changed
   addColumn(db, 'listings', 'model', 'TEXT');
   addColumn(db, 'listings', 'updated_at', 'TEXT');
+  // M2
+  addColumn(db, 'products', 'pod_external_id', 'TEXT');                         // Printify (or stub-) product id
+  addColumn(db, 'products', 'pod_variant_ids', "TEXT NOT NULL DEFAULT '[]'");   // JSON: variants chosen in the composer
+  addColumn(db, 'products', 'pod_cost_source', 'TEXT');                         // printify_product | catalog | estimate
+  addColumn(db, 'products', 'print_spec', 'TEXT');                              // JSON: required print-area pixels per position (M4 reads it)
+  addColumn(db, 'mockups', 'file', 'TEXT');                                     // local file under DATA_DIR/mockups (stub mockups); url is null then
+  addColumn(db, 'mockups', 'is_default', 'INTEGER NOT NULL DEFAULT 0');
+  addColumn(db, 'mockups', 'variant_ids', "TEXT NOT NULL DEFAULT '[]'");
 }
 
 function openDb(file) {

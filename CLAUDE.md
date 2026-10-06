@@ -14,3 +14,5 @@ This repository is public; keep this file to facts about the code.
 - Pushing to main deploys. Do not push work you are not ready to ship.
 - Paid calls (images, LLM) check the daily cap BEFORE the request, inside the real adapter/provider, and the pipeline records the actual `costs` row after. A cap refusal pauses; it does not fail the product or fall back to a stub.
 - Etsy text limits are enforced in code by `enforceCopy()` whatever a model returns; stored image dimensions are read from the PNG, never from a hook's claim.
+- The POD base cost is per-unit COGS on sale, not spend: never write it to `costs` at draft time. Printify exposes it only on a created product, so under DRY_RUN it is a labelled estimate (`pod_cost_source`, `pod_cost_estimated` flag).
+- Never downscale a design to fit an upload limit; fail with the reason instead.

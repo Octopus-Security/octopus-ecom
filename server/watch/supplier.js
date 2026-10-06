@@ -25,9 +25,12 @@ async function runSupplierWatch({ db, readers, alerts, state, settings, log }) {
 
   for (const p of products) {
     try {
-      const costs = await readers.getVariantCosts(p.blueprint, p.print_provider_id);
+      const costs = await readers.getVariantCosts(p.blueprint, p.print_provider_id, { externalId: p.pod_external_id });
       out.sources.add(costs.source);
-      const list = (costs.variants || []).map(v => v.costCents).filter(Number.isInteger);
+      // Stub figures never overwrite a cost that came from Printify; and only the variants chosen for this product count.
+      const chosen = (() => { try { return JSON.parse(p.pod_variant_ids || '[]').map(String); } catch { return []; } })();
+      const usable = costs.source === 'stub' && p.pod_cost_source && p.pod_cost_source !== 'estimate' ? [] : (costs.variants || []).filter(v => !chosen.length || chosen.includes(String(v.id)));
+      const list = usable.map(v => v.costCents).filter(Number.isInteger);
       out.checked++;
       const title = p.title || `Product ${p.id}`;
       if (list.length) {

@@ -20,9 +20,9 @@ function makeReaders(adapters = {}) {
   // The routed adapter falls back to its stub per call; ask it, so a run is never labelled real when it was not.
   const routedReal = (a, m) => { try { return !a.describe || a.describe().methods[m] === 'real'; } catch { return true; } };
   return {
-    async getVariantCosts(blueprint, provider) {
-      if (has(adapters.pod, 'getVariantCosts')) return { source: routedReal(adapters.pod, 'getVariantCosts') ? 'adapter' : 'stub', ...(await adapters.pod.getVariantCosts(blueprint, provider)) };
-      return { source: 'stub', ...(await fallbackPod.getVariantCosts(blueprint, provider)) };
+    async getVariantCosts(blueprint, provider, opts) {
+      if (has(adapters.pod, 'getVariantCosts')) return { source: routedReal(adapters.pod, 'getVariantCosts') ? 'adapter' : 'stub', ...(await adapters.pod.getVariantCosts(blueprint, provider, opts)) };
+      return { source: 'stub', ...(await fallbackPod.getVariantCosts(blueprint, provider, opts)) };
     },
     async getAvailability(blueprint, provider) {
       if (has(adapters.pod, 'getAvailability')) return { source: routedReal(adapters.pod, 'getAvailability') ? 'adapter' : 'stub', ...(await adapters.pod.getAvailability(blueprint, provider)) };

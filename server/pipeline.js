@@ -1,6 +1,15 @@
 'use strict';
 /**
- * pipeline.js — M1 service: create product (idea) -> generate design -> draft listing copy.
+ * pipeline.js — create product (idea) -> generate design -> [M2] create POD product + mockups + base cost
+ * (mockup_ready) -> copy + projected margin (listing_drafted) -> submit (PENDING_APPROVAL) -> approve.
+ *
+ * M2 money decision: the POD base cost is a per-unit COGS paid when a unit SELLS, not a spend at draft
+ * time. No `costs` row is written for it and it never counts toward the daily cap; it feeds projected
+ * margin only. (kind 'pod' in `costs` is reserved for per-sale COGS ingested in M3; 'listing_fee' is
+ * charged at publish, M3.) Where the cost came from is recorded in products.pod_cost_source:
+ *   printify_product  read back from the real product (the only place Printify exposes it)
+ *   catalog           a real read of per-variant costs (not offered by the catalog; kept for providers that do)
+ *   estimate          a stub figure (DRY_RUN fakes the product create); flagged `pod_cost_estimated`
  *
  * Stage writes go ONLY through stages.transition(). Choices worth knowing:
  *  - Draft copy lives in a `listings` row (platform 'etsy', status 'draft', one per product) and the
@@ -15,11 +24,13 @@
  *  - Regenerate keeps history: every design is a new `designs` row; nothing is deleted.
  *  - One operation per product at a time (an in-flight set): a double click must not buy two images.
  */
+const path = require('node:path');
 const { S, parseFlags } = require('./domain/stages');
 const { checkBlocklist } = require('./domain/blocklist');
 const { enforceCopy } = require('./domain/etsy-rules');
 const { designPrompt } = require('./domain/prompts');
 const { productEvent } = require('./events');
+const { projectMargin, marginFlags } = require('./domain/fees');
 
 const PRINT_W = 4500; const PRINT_H = 5400; // default print area until a blueprint says otherwise (M2)
 
@@ -52,7 +63,16 @@ function validateInput(b = {}, { partial = false } = {}) {
   return out;
 }
 
-function makePipeline({ db, stages, adapters, spend, log = console }) {
+const parse = (t, d) => { try { return JSON.parse(t); } catch { return d; } };
+/** The print area the design is generated for: the blueprint's first position when known, else the M1 default. */
+function primaryArea(p) {
+  const spec = parse(p.print_spec, null);
+  const a = spec && spec.positions && spec.positions[0];
+  return a && a.width > 0 && a.height > 0 ? { width: a.width, height: a.height, position: a.position } : { width: PRINT_W, height: PRINT_H, position: 'front' };
+}
+const baseTitle = p => (p.title || p.brief || `Product ${p.id}`).slice(0, 120);
+
+function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun = () => true, log = console }) {
   const busy = new Set();
   const get = id => db.prepare('SELECT * FROM products WHERE id = ?').get(id);
   const need = id => { const p = get(Number(id)); if (!p) throw new PipelineError(`Product ${id} not found`, 404, 'not_found'); return p; };
@@ -111,7 +131,8 @@ function makePipeline({ db, stages, adapters, spend, log = console }) {
 
       const prompt = designPrompt(p);
       let gen;
-      try { gen = await adapters.imagegen.generate(prompt, { width: PRINT_W, height: PRINT_H, count: 1 }); }
+      const dim = primaryArea(p);
+      try { gen = await adapters.imagegen.generate(prompt, { width: dim.width, height: dim.height, count: 1 }); }
       catch (e) { throw failure(p, e, actor, 'image generation'); }
 
       // Money first: it is spent whatever happens next.
@@ -135,7 +156,7 @@ function makePipeline({ db, stages, adapters, spend, log = console }) {
     id = Number(id);
     return exclusive(id, async () => {
       const p = need(id);
-      if (p.stage !== S.DESIGN) throw new PipelineError(`Copy is drafted from design_generated; the product is ${p.stage}`, 409, 'illegal_stage');
+      if (![S.DESIGN, S.MOCKUP].includes(p.stage)) throw new PipelineError(`Copy is drafted from design_generated or mockup_ready; the product is ${p.stage}`, 409, 'illegal_stage');
       const design = db.prepare('SELECT * FROM designs WHERE product_id = ? ORDER BY id DESC LIMIT 1').get(id);
       if (!design) throw new PipelineError('The product has no design yet', 409, 'no_design');
       let raw;
@@ -188,6 +209,219 @@ function makePipeline({ db, stages, adapters, spend, log = console }) {
     });
   }
 
+
+  // ---- M2: POD product, mockups, base cost, margin, approval ------------------------------------------
+  const guardStage = (p, allowed, what) => { if (!allowed.includes(p.stage)) throw new PipelineError(`${what} is not possible while the product is ${p.stage}`, 409, 'illegal_stage'); };
+  const podReal = m => { try { return adapters.pod.describe().methods[m] === 'real'; } catch { return false; } };
+
+  /** Replace flags that came from `prefix*` codes, keep every other flag. */
+  function replaceFlags(id, prefix, next) {
+    const p = get(id);
+    const flags = parseFlags(p).filter(f => !String(f.code).startsWith(prefix)).concat(next);
+    db.prepare('UPDATE products SET flags = ? WHERE id = ?').run(JSON.stringify(flags), id);
+  }
+
+  /** Recompute projected margin + margin/estimate flags from list price, shipping and base cost. Same functions as the supplier watcher. */
+  function applyMargin(id) {
+    const p = get(id);
+    const floor = settings ? settings.getInt('margin_floor_cents', 200) : 200;
+    replaceFlags(id, 'pod_cost_', p.pod_cost_source === 'estimate' ? [{ code: 'pod_cost_estimated', detail: 'base cost is a stub estimate, not a Printify price', source: 'pipeline' }] : []);
+    if (Number.isInteger(p.list_price_cents) && Number.isInteger(p.pod_base_cost_cents)) {
+      const m = projectMargin({ listPriceCents: p.list_price_cents, shippingCents: p.shipping_cents || 0, podBaseCostCents: p.pod_base_cost_cents });
+      replaceFlags(id, 'margin_', marginFlags(m.marginCents, floor).map(f => ({ ...f, source: 'pipeline' })));
+      db.prepare('UPDATE products SET projected_margin_cents = ? WHERE id = ?').run(m.marginCents, id);
+      return m;
+    }
+    replaceFlags(id, 'margin_', []);
+    db.prepare('UPDATE products SET projected_margin_cents = NULL WHERE id = ?').run(id);
+    return null;
+  }
+
+  /** Pure preview for the composer: no product needed. */
+  function marginPreview({ listPriceCents, shippingCents = 0, podBaseCostCents }) {
+    const floor = settings ? settings.getInt('margin_floor_cents', 200) : 200;
+    const ints = [listPriceCents, shippingCents, podBaseCostCents];
+    if (!ints.every(n => Number.isInteger(n) && n >= 0)) throw new PipelineError('listPriceCents, shippingCents and podBaseCostCents must be non-negative integers');
+    const m = projectMargin({ listPriceCents, shippingCents, podBaseCostCents });
+    return { ...m, floorCents: floor, flags: marginFlags(m.marginCents, floor) };
+  }
+
+  /** Choose blueprint + provider + variants; reads the catalog and records the print-area pixels M4 will check against. */
+  function selectPod(id, { blueprint, providerId, variantIds } = {}) {
+    id = Number(id);
+    return exclusive(id, async () => {
+      const p = need(id);
+      guardStage(p, [S.IDEA, S.DESIGN, S.MOCKUP, S.DRAFTED, S.PENDING, S.FAILED], 'Choosing a blueprint');
+      const bp = clean(blueprint, 100, 'blueprint'); const pp = clean(providerId, 100, 'printProviderId');
+      if (!bp || !pp) throw new PipelineError('blueprint and printProviderId are required');
+      let cat;
+      try { cat = await adapters.pod.listVariants(bp, pp); }
+      catch (e) { throw new PipelineError(`could not read the print provider's variants: ${e.message}`, 502, 'pod_read_failed'); }
+      const all = cat.variants || [];
+      if (!all.length) throw new PipelineError('that blueprint/provider offers no variants', 422, 'no_variants');
+      const want = (Array.isArray(variantIds) && variantIds.length ? variantIds : [all[0].id]).map(String);
+      const chosen = all.filter(v => want.includes(String(v.id)));
+      if (chosen.length !== new Set(want).size) throw new PipelineError('one or more variants do not belong to that blueprint/provider', 422, 'bad_variant');
+      const positions = new Map();
+      for (const v of chosen) for (const ph of v.placeholders || []) {
+        const cur = positions.get(ph.position);
+        positions.set(ph.position, { position: ph.position, width: Math.max(cur ? cur.width : 0, ph.width), height: Math.max(cur ? cur.height : 0, ph.height) });
+      }
+      const spec = { blueprint: bp, providerId: pp, positions: [...positions.values()], source: cat.source || 'unknown', fetchedAt: new Date().toISOString() };
+      db.prepare('UPDATE products SET blueprint = ?, print_provider_id = ?, pod_variant_ids = ?, print_spec = ?, updated_at = ? WHERE id = ?')
+        .run(bp, pp, JSON.stringify(chosen.map(v => v.id)), JSON.stringify(spec), new Date().toISOString(), id);
+      productEvent(db, id, { actor: 'human', note: `POD chosen: blueprint ${bp}, provider ${pp}, ${chosen.length} variant(s); print area ${spec.positions.map(a => `${a.position} ${a.width}x${a.height}px`).join(', ') || 'unknown'} (${spec.source})` });
+      return get(id);
+    });
+  }
+
+  function storeMockups(id, mockups) {
+    db.prepare('DELETE FROM mockups WHERE product_id = ?').run(id); // mockups are derived data: replaced on each read-back
+    const t = new Date().toISOString();
+    for (const m of mockups) db.prepare('INSERT INTO mockups(product_id,url,placement,created_at,file,is_default,variant_ids) VALUES(?,?,?,?,?,?,?)')
+      .run(id, m.file ? `local:${m.file}` : m.url, m.placement || null, t, m.file || null, m.isDefault ? 1 : 0, JSON.stringify(m.variantIds || []));
+  }
+
+  /** design_generated -> mockup_ready: create the POD product (a WRITE: faked under DRY_RUN), read mockups + base cost. */
+  function createPodProduct(id, { actor = 'human' } = {}) {
+    id = Number(id);
+    return exclusive(id, async () => {
+      let p = need(id);
+      guardStage(p, [S.DESIGN, S.MOCKUP, S.FAILED], 'Creating the POD product');
+      if (!p.blueprint || !p.print_provider_id) throw new PipelineError('Choose a blueprint and print provider first', 409, 'no_blueprint');
+      if (!Number.isInteger(p.list_price_cents) || p.list_price_cents <= 0) throw new PipelineError('Set a list price first (Printify needs one per variant)', 409, 'no_price');
+      const design = db.prepare('SELECT * FROM designs WHERE product_id = ? ORDER BY id DESC LIMIT 1').get(id);
+      if (!design || !design.image_path) throw new PipelineError('The product has no design yet', 409, 'no_design');
+      const variantIds = parse(p.pod_variant_ids, []);
+      if (!variantIds.length) throw new PipelineError('Choose at least one variant', 409, 'no_variants');
+      // Retry from `failed` keeps the design already paid for: failed -> idea -> design_generated, then on.
+      if (p.stage === S.FAILED) { stages.transition(id, S.IDEA, { actor, note: 'retry' }); p = stages.transition(id, S.DESIGN, { actor, note: 'retry POD product creation with the existing design' }); }
+      const area = primaryArea(p);
+      let res;
+      try {
+        res = await adapters.pod.createProduct({
+          blueprintId: p.blueprint, providerId: p.print_provider_id, variantIds, listPriceCents: p.list_price_cents,
+          title: baseTitle(p), description: p.brief, imagePath: path.resolve(dataDir || '.', 'images', design.image_path),
+          imageWidth: design.width, imageHeight: design.height, position: area.position, placeholder: { width: area.width, height: area.height },
+        });
+      } catch (e) { throw failure(p, e, actor, 'POD product creation'); }
+
+      try {
+        // Base cost: the product read-back is the only real source; then a real catalog read; else the stub estimate.
+        const sel = new Set(variantIds.map(String));
+        const live = !res.faked && (res.variants || []).filter(v => sel.has(String(v.id)) && Number.isInteger(v.costCents)).map(v => v.costCents);
+        let cost = null; let source = null;
+        if (live && live.length) { cost = Math.max(...live); source = 'printify_product'; }
+        else {
+          let cat = null;
+          try { cat = podReal('getVariantCosts') ? await adapters.pod.getVariantCosts(p.blueprint, p.print_provider_id) : null; } catch { cat = null; }
+          const c = cat ? (cat.variants || []).filter(v => sel.has(String(v.id)) && Number.isInteger(v.costCents)).map(v => v.costCents) : [];
+          if (c.length) { cost = Math.max(...c); source = 'catalog'; }
+          else if (Number.isInteger(res.baseCostCents)) { cost = res.baseCostCents; source = res.faked || res.estimated ? 'estimate' : 'printify_product'; }
+        }
+        if (cost === null) throw new Error('no base cost available from the provider');
+        const old = p.pod_external_id;
+        db.prepare('UPDATE products SET pod_external_id = ?, pod_base_cost_cents = ?, pod_cost_source = ?, updated_at = ? WHERE id = ?').run(res.externalId, cost, source, new Date().toISOString(), id);
+        let mockups = res.mockups || [];
+        storeMockups(id, mockups);
+        applyMargin(id);
+        productEvent(db, id, { actor, note: `POD product ${res.faked ? '(faked, DRY_RUN) ' : ''}${res.externalId}: base cost ${(cost / 100).toFixed(2)} (${source}), ${mockups.length} mockup(s)${old && !String(old).startsWith('stub-') ? `; the earlier Printify product ${old} was left in the shop` : ''}${mockups.length ? '' : '; mockups not ready yet, use refresh'}` });
+        return p.stage === S.MOCKUP ? get(id) : stages.transition(id, S.MOCKUP, { actor, note: 'POD product created' });
+      } catch (e) { throw failure(p, e, actor, 'saving the POD product'); }
+    });
+  }
+
+  /** Re-read mockups from Printify (they can lag the create). A faked product has nothing to re-read. */
+  function refreshMockups(id, { actor = 'human' } = {}) {
+    id = Number(id);
+    return exclusive(id, async () => {
+      const p = need(id);
+      guardStage(p, [S.MOCKUP, S.DRAFTED, S.PENDING], 'Refreshing mockups');
+      if (!p.pod_external_id || String(p.pod_external_id).startsWith('stub-')) throw new PipelineError('This product has no real Printify product (DRY_RUN faked it); nothing to refresh', 409, 'faked_product');
+      let ms;
+      try { ms = await adapters.pod.getMockups(p.pod_external_id); } catch (e) { throw failure(p, e, actor, 'mockup refresh'); }
+      storeMockups(id, ms);
+      productEvent(db, id, { actor, note: `mockups refreshed (${ms.length})` });
+      return get(id);
+    });
+  }
+
+  /** mockup_ready -> listing_drafted: ensure copy exists (draft it if not), compute projected margin. */
+  function draftListing(id, { actor = 'human' } = {}) {
+    id = Number(id);
+    return exclusive(id, async () => {
+      let p = need(id);
+      guardStage(p, [S.MOCKUP], 'Drafting the listing');
+      if (!Number.isInteger(p.list_price_cents) || p.list_price_cents <= 0) throw new PipelineError('Set a list price first', 409, 'no_price');
+      if (!Number.isInteger(p.pod_base_cost_cents)) throw new PipelineError('No POD base cost yet; create the POD product first', 409, 'no_cost');
+      const have = db.prepare("SELECT id FROM listings WHERE product_id = ? AND platform = 'etsy' AND status = 'draft'").get(id);
+      if (!have) {
+        const design = db.prepare('SELECT * FROM designs WHERE product_id = ? ORDER BY id DESC LIMIT 1').get(id);
+        let raw;
+        try { raw = await adapters.listingcopy.generate({ brief: p.brief, prompt: design && design.prompt }, p.niche, kw(p)); }
+        catch (e) { throw failure(p, e, actor, 'listing copy'); }
+        if (raw.costCents > 0) spend.addCost({ productId: id, kind: 'llm', amountCents: raw.costCents, note: raw.model });
+        try { saveCopy(id, raw, { model: raw.model, actor, via: 'drafted' }); } catch (e) { throw failure(p, e, actor, 'listing copy'); }
+      }
+      const m = applyMargin(id);
+      db.prepare("UPDATE listings SET price_cents = ?, updated_at = ? WHERE product_id = ? AND platform = 'etsy' AND status = 'draft'").run(p.list_price_cents, new Date().toISOString(), id);
+      p = get(id);
+      return stages.transition(id, S.DRAFTED, { actor, note: `listing drafted; projected margin ${(m.marginCents / 100).toFixed(2)}${parseFlags(p).length ? `; flags: ${parseFlags(p).map(f => f.code).join(', ')}` : ''}` });
+    });
+  }
+
+  /** Change price/shipping: margin recomputed; a PENDING_APPROVAL product steps back so the approval is re-requested. */
+  function setPrice(id, { listPrice, shipping } = {}, { actor = 'human' } = {}) {
+    id = Number(id);
+    return exclusive(id, async () => {
+      const p = need(id);
+      guardStage(p, [S.IDEA, S.DESIGN, S.MOCKUP, S.DRAFTED, S.PENDING], 'Changing the price');
+      const dollars = (v, name) => { const n = Number(v); if (v === '' || v === null || !Number.isFinite(n) || n < 0 || n > 10000) throw new PipelineError(`${name} must be dollars between 0 and 10000`); return Math.round(n * 100); };
+      const price = listPrice !== undefined ? dollars(listPrice, 'listPrice') : p.list_price_cents;
+      const ship = shipping !== undefined ? dollars(shipping, 'shipping') : p.shipping_cents;
+      db.prepare('UPDATE products SET list_price_cents = ?, shipping_cents = ?, updated_at = ? WHERE id = ?').run(price, ship, new Date().toISOString(), id);
+      db.prepare("UPDATE listings SET price_cents = ? WHERE product_id = ? AND platform = 'etsy' AND status = 'draft'").run(price, id);
+      applyMargin(id);
+      productEvent(db, id, { actor, note: `price set to ${(price / 100).toFixed(2)} (shipping ${(ship / 100).toFixed(2)})` });
+      if (p.stage === S.PENDING) return stages.transition(id, S.DRAFTED, { actor, note: 'price changed; approval must be re-requested' });
+      return get(id);
+    });
+  }
+
+  /** listing_drafted -> PENDING_APPROVAL. Flags do not block submitting; they block autopublish and are shown at approval. */
+  function submit(id, { actor = 'human' } = {}) {
+    id = Number(id);
+    return exclusive(id, async () => {
+      const p = need(id);
+      guardStage(p, [S.DRAFTED], 'Submitting for approval');
+      if (!db.prepare("SELECT 1 FROM listings WHERE product_id = ? AND platform = 'etsy' AND status = 'draft'").get(id)) throw new PipelineError('No listing copy yet', 409, 'no_copy');
+      applyMargin(id); // fresh numbers at the moment of asking
+      return stages.transition(id, S.PENDING, { actor, note: 'submitted for approval' });
+    });
+  }
+
+  /** PENDING_APPROVAL -> approved. The human confirm gate lives in the route; the agent rule lives in transition(). */
+  function approve(id, { actor = 'human' } = {}) {
+    id = Number(id);
+    return exclusive(id, async () => {
+      const p = need(id);
+      guardStage(p, [S.PENDING], 'Approving');
+      return stages.transition(id, S.APPROVED, { actor, note: 'approved' });
+    });
+  }
+  const finish = (id, to, what, { actor = 'human', note = '' } = {}) => exclusive(Number(id), async () => stages.transition(Number(id), to, { actor, note: note || what }));
+  const reject = (id, o = {}) => finish(id, S.REJECTED, 'rejected', o);
+  const archive = (id, o = {}) => finish(id, S.ARCHIVED, 'archived', o);
+
+  function unitEconomics(p) {
+    if (!Number.isInteger(p.list_price_cents) || !Number.isInteger(p.pod_base_cost_cents)) return null;
+    const floor = settings ? settings.getInt('margin_floor_cents', 200) : 200;
+    const m = projectMargin({ listPriceCents: p.list_price_cents, shippingCents: p.shipping_cents || 0, podBaseCostCents: p.pod_base_cost_cents });
+    return { listPriceCents: p.list_price_cents, shippingCents: p.shipping_cents || 0, costSource: p.pod_cost_source, floorCents: floor, ...m };
+  }
+
+  const mockupUrl = m => (m.file ? `/api/mockups/${m.id}/file` : m.url);
+
   function detail(id) {
     const p = need(id);
     const designs = db.prepare('SELECT * FROM designs WHERE product_id = ? ORDER BY id DESC').all(p.id).map(d => ({
@@ -198,10 +432,11 @@ function makePipeline({ db, stages, adapters, spend, log = console }) {
     const events = db.prepare('SELECT id, kind, stage_from AS stageFrom, stage_to AS stageTo, actor, note, ts FROM events WHERE product_id = ? ORDER BY id').all(p.id);
     const l = db.prepare("SELECT * FROM listings WHERE product_id = ? AND platform = 'etsy' AND status = 'draft' ORDER BY id DESC LIMIT 1").get(p.id);
     const copy = l ? { title: l.title, tags: JSON.parse(l.tags || '[]'), description: l.description, repairs: JSON.parse(l.repairs || '[]'), model: l.model, updatedAt: l.updated_at } : null;
-    return { product: { ...p, keywords: kw(p), flags: parseFlags(p) }, designs, costs, costTotalCents: costs.reduce((a, c) => a + c.amountCents, 0), events, copy };
+    const mockups = db.prepare('SELECT * FROM mockups WHERE product_id = ? ORDER BY is_default DESC, id').all(p.id).map(m => ({ id: m.id, url: mockupUrl(m), placement: m.placement, isDefault: !!m.is_default }));
+    return { product: { ...p, keywords: kw(p), flags: parseFlags(p), pod_variant_ids: parse(p.pod_variant_ids, []), print_spec: parse(p.print_spec, null) }, mockups, economics: unitEconomics(p), designs, costs, costTotalCents: costs.reduce((a, c) => a + c.amountCents, 0), events, copy };
   }
 
-  return { create, generateDesign, draftCopy, editCopy, detail, validateInput, PipelineError };
+  return { create, generateDesign, draftCopy, editCopy, detail, validateInput, PipelineError, selectPod, createPodProduct, refreshMockups, draftListing, setPrice, submit, approve, reject, archive, marginPreview, applyMargin };
 }
 
 module.exports = { makePipeline, PipelineError, PRINT_W, PRINT_H };

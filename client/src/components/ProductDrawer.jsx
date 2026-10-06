@@ -6,17 +6,18 @@ const LIM = { title: 140, tags: 13, tag: 20 };
 const Counter = ({ n, max, label }) => <span className={`counter ${n > max ? 'neg' : n === max ? 'warn' : 'muted'}`}>{n}/{max} {label}</span>;
 const parseTags = (s) => s.split(',').map((t) => t.trim()).filter(Boolean);
 
-export default function ProductDrawer({ id, onClose, onChanged }) {
+export default function ProductDrawer({ id, onClose, onChanged, askConfirm }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState('');
   const [brief, setBrief] = useState('');
   const [copy, setCopy] = useState({ title: '', tags: '', description: '' });
   const [note, setNote] = useState('');
+  const [price, setPrice] = useState('');
 
   const load = useCallback(async () => {
     try {
-      const x = await api.product(id); setD(x); setBrief(x.product.brief);
+      const x = await api.product(id); setD(x); setBrief(x.product.brief); setPrice(x.product.list_price_cents === null ? '' : (x.product.list_price_cents / 100).toFixed(2));
       if (x.copy) setCopy({ title: x.copy.title || '', tags: (x.copy.tags || []).join(', '), description: x.copy.description || '' });
     } catch (e) { setErr(e.message); }
   }, [id]);
@@ -29,9 +30,21 @@ export default function ProductDrawer({ id, onClose, onChanged }) {
     finally { setBusy(''); }
   }
 
+  async function approve() {
+    setErr('');
+    try {
+      const gate = await api.approve(id);
+      if (!gate.needsConfirm) { await load(); onChanged(); return; }
+      askConfirm({ title: 'Approve for publishing?', summary: gate.summary, danger: (d.product.flags || []).length > 0,
+        run: async () => { await api.approve(id, gate.token); await load(); onChanged(); } });
+    } catch (e) { setErr(e.message); }
+  }
+  const ask = (title, summary, fn) => askConfirm({ title, summary, danger: true, run: async () => { await fn(); await load(); onChanged(); } });
+
   if (!d) return <aside className="drawer wide">{err ? <div className="banner error">{err}</div> : 'loading...'}<button className="ghost" onClick={onClose}>Close</button></aside>;
   const p = d.product; const latest = d.designs[0];
   const tags = parseTags(copy.tags);
+  const eco = d.economics; const st = p.stage;
   const canEdit = ['design_generated', 'mockup_ready', 'listing_drafted', 'PENDING_APPROVAL'].includes(p.stage);
   const canRegen = ['idea', 'design_generated', 'mockup_ready', 'listing_drafted', 'PENDING_APPROVAL', 'failed'].includes(p.stage);
 
@@ -52,6 +65,42 @@ export default function ProductDrawer({ id, onClose, onChanged }) {
           </div>
         </section>
       )}
+
+      {d.mockups.length > 0 && (
+        <section>
+          <h4>Mockups</h4>
+          <div className="gallery">{d.mockups.map((m) => <img key={m.id} src={m.url} alt={`Mockup ${m.placement || ''}`} loading="lazy" />)}</div>
+          {p.pod_external_id && p.pod_external_id.startsWith('stub-') && <div className="muted small">Placeholder mockups: DRY_RUN faked the print-provider product.</div>}
+        </section>
+      )}
+
+      <section>
+        <h4>Print provider and economics</h4>
+        <div className="small muted">Blueprint {p.blueprint || '-'} / provider {p.print_provider_id || '-'} / {p.pod_variant_ids.length} variant(s){p.print_spec ? ` / print area ${p.print_spec.positions.map((a) => `${a.position} ${a.width}x${a.height}px`).join(', ')}` : ''}</div>
+        {eco ? (
+          <table className="econ"><tbody>
+            <tr><td>List price</td><td>{dollars(eco.listPriceCents)}</td></tr>
+            <tr><td>POD base cost ({eco.costSource === 'estimate' ? 'estimate' : eco.costSource})</td><td>-{dollars(eco.podBaseCostCents)}</td></tr>
+            <tr><td>Listing fee</td><td>-{dollars(eco.listingFeeCents)}</td></tr>
+            <tr><td>Transaction fee</td><td>-{dollars(eco.transactionFeeCents)}</td></tr>
+            <tr><td>Processing fee</td><td>-{dollars(eco.processingFeeCents)}</td></tr>
+            <tr><td><b>Projected margin</b> (floor {dollars(eco.floorCents)})</td><td className={eco.marginCents <= 0 ? 'neg' : eco.marginCents < eco.floorCents ? 'warn' : 'pos'}><b>{dollars(eco.marginCents)}</b></td></tr>
+          </tbody></table>
+        ) : <div className="muted small">No base cost yet: create the print-provider product.</div>}
+        <div className="muted small">The base cost is charged per unit when one sells, so it is not part of "cost" above.</div>
+        {['idea', 'design_generated', 'mockup_ready', 'listing_drafted', 'PENDING_APPROVAL'].includes(st) && (
+          <div className="row"><label className="grow">List price (USD)<input type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} /></label>
+            <button disabled={!!busy || price === ''} onClick={() => run('price', () => api.setPrice(id, { listPrice: price }))}>Set price</button></div>)}
+        <div className="row">
+          {(st === 'design_generated' || st === 'failed') && latest && p.blueprint && <button disabled={!!busy} onClick={() => run('pod', () => api.createPod(id))}>{busy === 'pod' ? 'Creating...' : 'Create POD product + mockups'}</button>}
+          {st === 'mockup_ready' && <button disabled={!!busy} onClick={() => run('draft', () => api.draftListing(id))}>{busy === 'draft' ? 'Drafting...' : 'Draft listing + margin'}</button>}
+          {['mockup_ready', 'listing_drafted', 'PENDING_APPROVAL'].includes(st) && p.pod_external_id && !p.pod_external_id.startsWith('stub-') && <button className="ghost" disabled={!!busy} onClick={() => run('mock', () => api.refreshMockups(id))}>Refresh mockups</button>}
+          {st === 'listing_drafted' && <button disabled={!!busy} onClick={() => run('submit', () => api.submit(id))}>Submit for approval</button>}
+          {st === 'PENDING_APPROVAL' && <button className={p.flags.length ? 'danger' : ''} disabled={!!busy} onClick={approve}>Approve...</button>}
+          {['mockup_ready', 'listing_drafted', 'PENDING_APPROVAL', 'approved', 'design_generated'].includes(st) && <button className="ghost" disabled={!!busy} onClick={() => ask('Reject this product?', `Reject product #${p.id}. It leaves the pipeline; it can only be archived afterwards.`, () => api.reject(id))}>Reject...</button>}
+          {!['archived', 'published', 'live'].includes(st) && <button className="ghost" disabled={!!busy} onClick={() => ask('Archive this product?', `Archive product #${p.id}. Archived products cannot be moved again.`, () => api.archive(id))}>Archive...</button>}
+        </div>
+      </section>
 
       <section>
         <h4>Brief</h4>
