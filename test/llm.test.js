@@ -48,7 +48,7 @@ test('makeLlm: stub by default; unimplemented/unknown providers fall back to the
   assert.equal((await llm.complete({ prompt: 'hello', tier: 'deep' })).text, out.text, 'deterministic');
   assert.equal(JSON.parse((await llm.complete({ prompt: 'x', json: true })).text).stub, true);
   await assert.rejects(llm.complete({ prompt: 'x', tier: 'bogus' }), /Unknown tier/);
-  for (const p of ['openai', 'openai-compatible', 'nonsense']) {
+  for (const p of ['openai', 'openai-compatible', 'nonsense']) { // no key / no base URL / unknown -> stub
     const l = makeLlm({ cfg: { ...d.cfg, llm: { ...d.cfg.llm, provider: p } }, credentials: d.credentials, log: { info() {}, warn() {} } });
     assert.equal(l.describe().provider, 'stub', p);
     assert.ok(l.describe().note);

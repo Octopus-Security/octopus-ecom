@@ -14,14 +14,18 @@ const { makeRedactor } = require('./redact');
 const { createLogger } = require('./log');
 const { buildAuth } = require('./auth');
 const { buildAdapters } = require('./adapters');
-const { makeLlm } = require('./llm');
+const { makeHttp } = require('./adapters/http');
 
-function createDeps(cfg, { secret, env = process.env, dbFile, out, authOptions, http, requireFn, now } = {}) {
+const { makeLlm } = require('./llm');
+const { makePipeline } = require('./pipeline');
+
+function createDeps(cfg, { secret, env = process.env, dbFile, out, authOptions, http, requireFn, now, upscale } = {}) {
   const db = openDb(dbFile || path.join(cfg.dataDir, 'ecom.db'));
   const keystore = makeKeystore(db, secret);
   const credentials = makeCredentials({ keystore, env, secret });
   const redactor = makeRedactor(() => credentials.allValues());
   const log = createLogger(redactor, out);
+  http = http || makeHttp({ log });
   const settings = makeSettings(db);
   seedSettings(settings, cfg);
   seedBlocklist(db);
@@ -30,9 +34,10 @@ function createDeps(cfg, { secret, env = process.env, dbFile, out, authOptions, 
   const spend = makeSpend({ db, settings });
   const stages = makeStages({ db, isDryRun: dryRun.isOn });
   const auth = buildAuth(cfg, { log, ...(authOptions || {}) });
-  const llm = makeLlm({ cfg, credentials, log, env, requireFn });
-  const adapters = buildAdapters({ cfg, credentials, keystore, isDryRun: dryRun.isOn, log, llm, http });
-  return { cfg, db, keystore, credentials, redactor, log, settings, confirm, dryRun, spend, stages, auth, llm, adapters };
+  const llm = makeLlm({ cfg, credentials, http, spend, log, env, requireFn });
+  const adapters = buildAdapters({ cfg, credentials, keystore, isDryRun: dryRun.isOn, log, llm, http, spend, upscale });
+  const pipeline = makePipeline({ db, stages, adapters, spend, log });
+  return { pipeline, http, cfg, db, keystore, credentials, redactor, log, settings, confirm, dryRun, spend, stages, auth, llm, adapters };
 }
 
 module.exports = { createDeps };

@@ -8,12 +8,12 @@ const { CONTRACTS, assertAdapter, NotImplemented } = require('../server/adapters
 const { readPngSize } = require('../server/png');
 const { normalizeTags } = require('../server/domain/etsy-rules');
 
-test('every real scaffold satisfies its contract and is marked not implemented', () => {
+test('every real adapter satisfies its contract; the M2/M3 ones are still scaffolds', () => {
+  assertAdapter('imagegen', require('../server/adapters/imagegen/openai').createOpenAiImages());
+  assertAdapter('listingcopy', require('../server/adapters/listingcopy/llm').createLlmCopy());
   const real = {
-    imagegen: require('../server/adapters/imagegen/openai').createOpenAiImages(),
     pod: require('../server/adapters/pod/printify').createPrintify(),
     storefront: require('../server/adapters/storefront/etsy').createEtsy(),
-    listingcopy: require('../server/adapters/listingcopy/llm').createLlmCopy(),
   };
   for (const [k, impl] of Object.entries(real)) { assertAdapter(k, impl); assert.equal(impl.implemented, false, k); }
   assertAdapter('pod', require('../server/adapters/pod/printful').createPrintful());
@@ -44,9 +44,12 @@ test('all five adapters work as stubs with no credentials', async () => {
   const c = await a.listingcopy.generate({}, 'retro space cats', ['retro', 'space', 'cats']);
   assert.ok(c.title.length <= 140); assert.ok(c.tags.length <= 13); assert.deepEqual(c.tags, normalizeTags(c.tags));
 });
-test('a real credential does not select an unimplemented real adapter', () => {
+test('a real credential does not select an unimplemented real adapter; OpenAI key selects imagegen + listingcopy', () => {
   const d = makeDeps({ PRINTIFY_API_TOKEN: 'tok-printify-123456789', OPENAI_API_KEY: 'sk-' + 'q'.repeat(40) });
-  for (const x of d.adapters.describe()) assert.equal(x.realReady, false);
+  const by = Object.fromEntries(d.adapters.describe().map(x => [x.kind, x]));
+  assert.equal(by.pod.realReady, false); assert.equal(by.storefront.realReady, false); assert.equal(by.trend.realReady, false);
+  assert.equal(by.imagegen.realReady, true); assert.equal(by.imagegen.methods.generate, 'real'); // spend: real even in DRY_RUN
+  assert.equal(by.listingcopy.realReady, true);
 });
 test('png encoder: exact dimensions at print size, small on disk', () => {
   const { solidPng } = require('../server/png');

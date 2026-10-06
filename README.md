@@ -27,8 +27,10 @@ npm test     # node:test, no network, no keys
 
 ## Status
 
-Milestone M0 (skeleton): server, panel with an empty board, sealed credential
-storage, DRY_RUN plumbing, the product state machine, and stub adapters for image
-generation, print-on-demand, storefront, trend research and listing copy. The
-composer, real providers, Etsy OAuth and the batch orchestrator arrive in later
-milestones. See `ARCHITECTURE.md`.
+Milestone M1: everything from M0 plus the **New product** composer (brief, niche,
+keywords, list price -> generate design -> auto-draft Etsy copy), board cards with
+thumbnail, cost and flags, and a detail drawer with regenerate (edit the brief) and
+copy editing with live Etsy-limit counters. With an OpenAI key (panel Settings or
+`OPENAI_API_KEY`) generation is real (BYOK, governed by the daily spend cap) even in
+dry-run; without one it is stubbed. Print-on-demand, Etsy publishing and the batch
+orchestrator arrive in later milestones. See `ARCHITECTURE.md`.

@@ -70,7 +70,7 @@ const SCHEMA = `
   CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     product_id INTEGER REFERENCES products(id),  -- NULL for system events
-    kind TEXT NOT NULL DEFAULT 'stage',          -- stage | system
+    kind TEXT NOT NULL DEFAULT 'stage',          -- stage | system | note
     stage_from TEXT, stage_to TEXT,
     actor TEXT NOT NULL, note TEXT, ts TEXT NOT NULL
   );
@@ -106,7 +106,16 @@ function addColumn(db, table, column, ddl) {
 }
 
 // Future additive migrations go here, wrapped in addColumn().
-function migrate(_db) { /* none yet */ }
+function migrate(db) {
+  // M1
+  addColumn(db, 'products', 'keywords', "TEXT NOT NULL DEFAULT '[]'");        // JSON array of operator keywords
+  addColumn(db, 'designs', 'native_width', 'INTEGER');                          // size the model returned
+  addColumn(db, 'designs', 'native_height', 'INTEGER');
+  addColumn(db, 'designs', 'upscale_method', 'TEXT');                           // null = not upscaled; width/height are always the REAL stored size
+  addColumn(db, 'listings', 'repairs', "TEXT NOT NULL DEFAULT '[]'");          // JSON: what enforceCopy changed
+  addColumn(db, 'listings', 'model', 'TEXT');
+  addColumn(db, 'listings', 'updated_at', 'TEXT');
+}
 
 function openDb(file) {
   if (file !== ':memory:') fs.mkdirSync(path.dirname(file), { recursive: true });

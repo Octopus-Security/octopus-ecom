@@ -3,6 +3,8 @@ import { api } from './api.js';
 import TopBar from './components/TopBar.jsx';
 import Board from './components/Board.jsx';
 import SettingsDrawer from './components/SettingsDrawer.jsx';
+import Composer from './components/Composer.jsx';
+import ProductDrawer from './components/ProductDrawer.jsx';
 import ConfirmModal from './components/ConfirmModal.jsx';
 
 export default function App() {
@@ -10,6 +12,8 @@ export default function App() {
   const [board, setBoard] = useState(null);
   const [error, setError] = useState('');
   const [drawer, setDrawer] = useState(false);
+  const [composer, setComposer] = useState(false);
+  const [openId, setOpenId] = useState(null);
   const [confirm, setConfirm] = useState(null); // {summary, phrase?, run(token, typed)}
 
   const refresh = useCallback(async () => {
@@ -36,10 +40,12 @@ export default function App() {
 
   return (
     <div className="app">
-      <TopBar summary={summary} onToggleDryRun={toggleDryRun} onSettings={() => setDrawer(true)} />
+      <TopBar summary={summary} onToggleDryRun={toggleDryRun} onSettings={() => setDrawer(true)} onNew={() => setComposer(true)} />
       {error && <div className="banner error" role="alert">{error}</div>}
-      <Board board={board} />
+      <Board board={board} onOpen={setOpenId} />
       {drawer && <SettingsDrawer onClose={() => { setDrawer(false); refresh(); }} askConfirm={setConfirm} />}
+      {composer && <Composer onClose={() => { setComposer(false); refresh(); }} onChanged={refresh} onOpen={(id) => { setComposer(false); setOpenId(id); }} />}
+      {openId !== null && <ProductDrawer id={openId} onClose={() => { setOpenId(null); refresh(); }} onChanged={refresh} />}
       {confirm && <ConfirmModal {...confirm} onClose={() => setConfirm(null)} />}
     </div>
   );

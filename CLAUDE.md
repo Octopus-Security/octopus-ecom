@@ -12,3 +12,5 @@ This repository is public; keep this file to facts about the code.
 - Migrations are additive (`addColumn` in `server/db.js`). Never drop or reset tables.
 - No code may fetch competitor listing images or titles.
 - Pushing to main deploys. Do not push work you are not ready to ship.
+- Paid calls (images, LLM) check the daily cap BEFORE the request, inside the real adapter/provider, and the pipeline records the actual `costs` row after. A cap refusal pauses; it does not fail the product or fall back to a stub.
+- Etsy text limits are enforced in code by `enforceCopy()` whatever a model returns; stored image dimensions are read from the PNG, never from a hook's claim.

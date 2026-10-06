@@ -17,7 +17,10 @@ function router(deps) {
   r.get('/products', wrap(async (_req, res) => {
     const rows = db.prepare(`
       SELECT p.*, s.name AS store_name,
-             (SELECT id FROM designs d WHERE d.product_id = p.id ORDER BY d.id DESC LIMIT 1) AS design_id
+             (SELECT id FROM designs d WHERE d.product_id = p.id ORDER BY d.id DESC LIMIT 1) AS design_id,
+             (SELECT width FROM designs d WHERE d.product_id = p.id ORDER BY d.id DESC LIMIT 1) AS design_w,
+             (SELECT height FROM designs d WHERE d.product_id = p.id ORDER BY d.id DESC LIMIT 1) AS design_h,
+             (SELECT COALESCE(SUM(amount_cents),0) FROM costs c WHERE c.product_id = p.id) AS cost_cents
       FROM products p LEFT JOIN stores s ON s.id = p.store_id ORDER BY p.updated_at DESC`).all();
     const columns = Object.fromEntries(STAGES.map(s => [s, []]));
     for (const p of rows) {
@@ -25,11 +28,35 @@ function router(deps) {
         id: p.id, stage: p.stage, title: p.title || p.brief.slice(0, 60) || `Product ${p.id}`, brief: p.brief, store: p.store_name || null,
         modelUsed: p.model_used, projectedMarginCents: p.projected_margin_cents, listPriceCents: p.list_price_cents,
         flags: parseFlags(p), failedReason: p.failed_reason,
+        costCents: p.cost_cents, designSize: p.design_id ? `${p.design_w}x${p.design_h}` : null,
         thumbnail: p.design_id ? `/api/images/${p.design_id}` : null, updatedAt: p.updated_at,
       });
     }
     res.json({ stages: STAGES, columns, count: rows.length });
   }));
+
+  // ---- M1: products -------------------------------------------------------------------------
+  const pipe = deps.pipeline;
+  const out = (res, status, o) => res.status(status).json(o);
+
+  // POST /api/products {brief, niche, keywords[], listPrice (dollars), blueprint, printProviderId} -> the new idea
+  r.post('/products', wrap(async (req, res) => {
+    const p = pipe.create(req.body || {}, { actor: actorOf(req) });
+    res.status(201).json({ ok: true, product: p });
+  }));
+  // POST /api/products/:id/generate-design {brief?}   (a brief = the operator edited it = regenerate)
+  r.post('/products/:id/generate-design', wrap(async (req, res) => {
+    const p = await pipe.generateDesign(req.params.id, { brief: (req.body || {}).brief, actor: actorOf(req) });
+    res.json({ ok: true, product: p });
+  }));
+  r.post('/products/:id/draft-copy', wrap(async (req, res) => {
+    res.json({ ok: true, ...(await pipe.draftCopy(req.params.id, { actor: actorOf(req) })) });
+  }));
+  // PATCH /api/products/:id/copy {title?, tags?, description?} - Etsy rules re-enforced server-side.
+  r.patch('/products/:id/copy', wrap(async (req, res) => {
+    res.json({ ok: true, ...(await pipe.editCopy(req.params.id, req.body || {}, { actor: actorOf(req) })) });
+  }));
+  r.get('/products/:id', wrap(async (req, res) => { out(res, 200, { ok: true, ...pipe.detail(req.params.id) }); }));
 
   // GET /api/summary — spend, revenue, NET, daily cap, and what is stubbed.
   r.get('/summary', wrap(async (_req, res) => {
@@ -42,7 +69,7 @@ function router(deps) {
     const root = path.resolve(deps.cfg.dataDir, 'images');
     const file = d && d.image_path ? path.resolve(root, d.image_path) : null;
     if (!file || !file.startsWith(root + path.sep) || !fs.existsSync(file)) return res.status(404).json({ error: 'Not found' });
-    res.type('png').sendFile(file);
+    res.set('Cache-Control', 'private, max-age=3600').type('png').sendFile(file);
   }));
 
   // GET /api/settings — presence only, never values.
@@ -105,6 +132,7 @@ function errorHandler(deps) {
     if (err instanceof ConfirmError) return res.status(409).json({ error: err.message, code: err.code });
     if (err.name === 'DryRunError') return res.status(400).json({ error: err.message });
     if (err.name === 'StageError') return res.status(err.code === 'not_found' ? 404 : 409).json({ error: err.message, code: err.code });
+    if (err.name === 'PipelineError') return res.status(err.status).json({ error: err.message, code: err.code, ...(err.failed ? { failed: true } : {}) });
     if (err.name === 'SpendCapError') return res.status(429).json({ error: err.message, code: 'spend_cap' });
     if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON' });
     if (err.status && err.status < 500) return res.status(err.status).json({ error: err.message });

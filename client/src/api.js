@@ -15,6 +15,11 @@ async function call(method, url, body) {
 export const api = {
   products: () => call('GET', '/api/products'),
   summary: () => call('GET', '/api/summary'),
+  createProduct: (b) => call('POST', '/api/products', b),
+  generateDesign: (id, brief) => call('POST', `/api/products/${id}/generate-design`, brief === undefined ? {} : { brief }),
+  draftCopy: (id) => call('POST', `/api/products/${id}/draft-copy`, {}),
+  saveCopy: (id, b) => call('PATCH', `/api/products/${id}/copy`, b),
+  product: (id) => call('GET', `/api/products/${id}`),
   settings: () => call('GET', '/api/settings'),
   saveSettings: (b) => call('POST', '/api/settings', b),
   setCredential: (name, value) => call('POST', '/api/settings/credentials', { name, value }),

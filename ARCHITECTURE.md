@@ -1,4 +1,4 @@
-# Architecture (first draft, milestone M0, 2026-10-05)
+# Architecture (first draft, milestone M1, 2026-10-05)
 
 Where this and the code disagree, the code is right.
 
@@ -99,9 +99,57 @@ injectable). Non-GET requests are retried only on 429, never on 5xx or timeout, 
 avoid double-creating a listing. Adapter failures are caught by the pipeline and
 move the product to `failed`; they never crash the process.
 
-In M0 every real adapter is a scaffold (`implemented: false`), so all five run as
-stubs whatever credentials exist. Printify (M2) and Etsy (M3) are signature-only; Printful is a
+As of M1, **ImageGen** (OpenAI Images) and **ListingCopy** (via the LLM interface) have real
+implementations and are chosen whenever a key exists, even in DRY_RUN (generation is spend, not a
+marketplace write). Printify (M2), Etsy (M3) and trend research remain stubs/scaffolds; Printful is a
 signature-only scaffold that stays unimplemented.
+
+### M1: image generation, copy, pipeline
+
+**ImageGen (`adapters/imagegen/openai.js`).** `POST /v1/images/generations` with `gpt-image-1`
+(`IMAGE_MODEL`, `IMAGE_QUALITY` default `high`). It asks for the largest size the model supports
+in the requested orientation (portrait 1024x1536 for the 4500x5400 default print area), decodes
+`b64_json`, and runs the pluggable **upscale hook** (`server/upscale.js`, interface documented
+there). The default hook is a pure-JS bilinear resample (own PNG decode/encode in `server/png.js`,
+no dependencies); it fits INSIDE the target keeping aspect ratio, so 1024x1536 becomes **3600x5400,
+not 4500x5400**, and it adds pixels, not detail. The design row stores the REAL size (`width`,
+`height`, read back from the PNG header, never from the hook's claim) plus `native_width/height`
+and `upscale_method`; print-readiness (M4) can reject on the real size. `IMAGE_UPSCALE=off` keeps
+the native size. Cost comes from the dated table in `adapters/imagegen/pricing.js`, rounded up to a
+cent; an unpriced model/quality/size is refused rather than guessed.
+
+**LLM (`server/llm/`).** `openai` (BYOK) and `openai-compatible` (`LLM_BASE_URL` + optional
+`LLM_API_KEY`) share `chat.js`; the provider is resolved per call, so a key saved in the panel works
+without a restart. Model per tier: `LLM_MODEL_<TIER>` > the `ROUTER_PATH` table (read-only, `TIERS` +
+`ALIASES`) > built-in defaults (`gpt-4.1-nano` / `-mini` / `gpt-4.1`). Cost = reported token usage x the
+dated table in `llm/pricing.js` (override unknown models with `LLM_PRICE_IN_PER_M`/`_OUT_PER_M`; an
+unknown unpriced model is costed at a conservative worst case and reported `priceAssumed`).
+
+**Spend cap.** Checked BEFORE each paid call from a price estimate (inside the real adapter/provider,
+so a refusal makes no request) and the ACTUAL cost is recorded in `costs` right after the call, even if
+a later step fails. A cap refusal is a **pause**, not a failure: the product keeps its stage, a note
+event is written, the API answers 429. Cap hit does not fall back to a stub image (that would hide that
+generation is paused).
+
+**ListingCopy.** The LLM is asked (tier `standard`) for JSON `{title, tags, description}` using buyer
+search phrasing, no keyword stuffing, no brand/trademark terms. The model's output is never trusted:
+`domain/etsy-rules.js enforceCopy()` truncates the title on a word boundary to 140, strips characters
+Etsy titles/tags do not allow, allows `% : & +` once each in a title, trims/lowercases/dedupes tags,
+drops tags over 20 chars, keeps 13, and records every repair (`listings.repairs`). The M0 blocklist then
+runs over title, tags, description and brief; a hit sets a `blocklist` flag on the product (shown on the
+card, blocks autopublish) and the text is kept as written, not silently rewritten.
+
+**Pipeline (`server/pipeline.js`).** create (idea) -> generateDesign (design row + `costs` row,
+`transition` to `design_generated`) -> draftCopy. The draft copy lives in a `listings` row (platform
+`etsy`, status `draft`, one per product) with the title mirrored on `products.title`; the product STAYS
+at `design_generated` until M2 makes mockups. Regenerate appends a new `designs` row (history is never
+deleted); from later stages it steps back via `transition()`. Any failure other than a cap pause moves the
+product to `failed` with the reason (`failed -> idea` is the retry, done automatically by
+generate-design). One operation per product at a time.
+
+**API.** `POST /api/products`, `POST /api/products/:id/generate-design` (a `brief` in the body =
+regenerate with an edited brief), `POST /api/products/:id/draft-copy`, `PATCH /api/products/:id/copy`,
+`GET /api/products/:id`, `GET /api/images/:id` (authenticated like everything under `/api`).
 
 ## Credentials
 
@@ -126,10 +174,10 @@ cap uses the America/New_York calendar day.
 SQLite via `node:sqlite`. Spec tables: `stores`, `products`, `designs`, `mockups`,
 `listings`, `events`, `costs`, `sales`; plus `settings`, `keys` (sealed),
 `blocklist`. Migrations are additive only. `events.product_id` is NULL for system
-events (`kind = 'system'`). Confirm tokens are in memory (a restart invalidates them).
+events (`kind = 'system'`); `kind = 'note'` events belong to a product but are not stage changes. Confirm tokens are in memory (a restart invalidates them).
 
 ## Not yet built
 
-Composer and real image generation (M1), Printify (M2), Etsy OAuth, publish path and
+Printify (M2), Etsy OAuth, publish path and
 receipt ingest (M3), batch orchestrator, print-readiness enforcement and
 `docs/COMPLIANCE.md` (M4).

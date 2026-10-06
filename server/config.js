@@ -69,6 +69,16 @@ function loadConfig(env = process.env) {
       provider: (env.LLM_PROVIDER || '').trim().toLowerCase(),
       baseUrl: (env.LLM_BASE_URL || '').trim(),
       routerPath: (env.ROUTER_PATH || '').trim(),
+      // Optional per-tier model overrides (win over the router table and the built-in defaults).
+      models: { cheap: (env.LLM_MODEL_CHEAP || '').trim(), standard: (env.LLM_MODEL_STANDARD || '').trim(), deep: (env.LLM_MODEL_DEEP || '').trim() },
+      // Optional price for models the built-in table does not know, in dollars per 1M tokens.
+      priceInPerM: env.LLM_PRICE_IN_PER_M === undefined || env.LLM_PRICE_IN_PER_M === '' ? null : Number(env.LLM_PRICE_IN_PER_M),
+      priceOutPerM: env.LLM_PRICE_OUT_PER_M === undefined || env.LLM_PRICE_OUT_PER_M === '' ? null : Number(env.LLM_PRICE_OUT_PER_M),
+    },
+    image: {
+      model: (env.IMAGE_MODEL || 'gpt-image-1').trim(),
+      quality: (env.IMAGE_QUALITY || 'high').trim().toLowerCase(),
+      upscale: !OFF.has(String(env.IMAGE_UPSCALE === undefined ? 'true' : env.IMAGE_UPSCALE).trim().toLowerCase()),
     },
   };
 }

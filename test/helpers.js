@@ -20,3 +20,32 @@ function makeDeps(env = {}, opts = {}) {
 }
 
 module.exports = { makeDeps, tmpDir, SECRET, quiet };
+
+// ---- M1 helpers: fake fetch + tiny PNG fixtures --------------------------------------------
+const { encodePng } = require('../server/png');
+const { makeHttp } = require('../server/adapters/http');
+
+/** A deterministic gradient PNG (RGB) of the given size. */
+function gradientPng(w, h) {
+  const pixels = Buffer.alloc(w * h * 3);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const o = (y * w + x) * 3; pixels[o] = (x * 255 / Math.max(1, w - 1)) | 0; pixels[o + 1] = (y * 255 / Math.max(1, h - 1)) | 0; pixels[o + 2] = 90; }
+  return encodePng({ width: w, height: h, channels: 3, pixels });
+}
+
+/** fake fetch: responder(url, init) -> {status, body, headers}; records every call in .calls */
+function fakeFetch(responder) {
+  const calls = [];
+  const fn = async (url, init = {}) => {
+    calls.push({ url, method: init.method, headers: init.headers, body: init.body ? JSON.parse(init.body) : undefined });
+    const r = await responder(url, init, calls.length);
+    const text = typeof r.body === 'string' ? r.body : JSON.stringify(r.body);
+    return { status: r.status || 200, headers: { get: k => (r.headers || {})[k.toLowerCase()] ?? null }, text: async () => text };
+  };
+  fn.calls = calls;
+  return fn;
+}
+const fakeHttp = f => makeHttp({ fetchImpl: f, sleep: async () => {}, random: () => 0.5 });
+
+module.exports.gradientPng = gradientPng;
+module.exports.fakeFetch = fakeFetch;
+module.exports.fakeHttp = fakeHttp;

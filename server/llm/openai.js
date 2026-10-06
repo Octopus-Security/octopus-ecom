@@ -1,7 +1,9 @@
 'use strict';
-// TODO(M1): OpenAI chat completions, BYOK, through ../adapters/http.js. Model per tier from
-// router-path.js when available, else a small built-in table. API shape: assumed, unverified.
-function createOpenAi(/* { http, credentials, tiers, log } */) {
-  return { implemented: false, async complete() { throw new Error('llm.openai is not implemented yet (M1)'); } };
+/** OpenAI chat completions, BYOK (keystore 'openai' or OPENAI_API_KEY). Tier -> model: see pricing.js. */
+const { createChat } = require('./chat');
+const { DEFAULT_TIERS } = require('./pricing');
+
+function createOpenAi({ http, credentials, tiers, overrides, spend, log }) {
+  return createChat({ http, baseUrl: 'https://api.openai.com/v1', getKey: () => credentials.get('openai'), tiers, defaults: DEFAULT_TIERS, overrides, spend, name: 'llm.openai', log });
 }
 module.exports = { createOpenAi };

@@ -1,7 +1,7 @@
 import React from 'react';
 import { dollars } from '../api.js';
 
-export default function TopBar({ summary, onToggleDryRun, onSettings }) {
+export default function TopBar({ summary, onToggleDryRun, onSettings, onNew }) {
   if (!summary) return <header className="topbar"><strong>Shop</strong><span className="muted">loading...</span></header>;
   const { spend, revenue, netCents, dryRun } = summary;
   return (
@@ -20,6 +20,7 @@ export default function TopBar({ summary, onToggleDryRun, onSettings }) {
           <div style={{ width: `${spend.capPct}%` }} />
         </div>
       </div>
+      <button onClick={onNew}>New product</button>
       <button className="ghost" onClick={onSettings}>Settings</button>
     </header>
   );

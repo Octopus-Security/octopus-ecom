@@ -40,3 +40,12 @@ input { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid v
 .modal { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; width: min(480px, 100%); display: grid; gap: 12px; }
 .modal .row { justify-content: flex-end; }
 @media (max-width: 640px) { .col { flex-basis: 78vw; } .topbar { gap: 8px 14px; } }
+.card { cursor: pointer; } .card:focus-visible { outline: 2px solid var(--accent); }
+.drawer.wide { width: min(560px, 100%); display: grid; gap: 10px; align-content: start; }
+.modal.wide { width: min(560px, 100%); } .modal label, .drawer label { display: grid; gap: 4px; font-size: .85rem; color: var(--muted); }
+.grow { flex: 1; }
+textarea { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); width: 100%; resize: vertical; }
+.preview { width: 100%; max-height: 50vh; object-fit: contain; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+.counter { float: right; font-variant-numeric: tabular-nums; } .warn { color: var(--warn); }
+.tags { display: flex; flex-wrap: wrap; gap: 4px; } .tag { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; font-size: .78rem; } .tag.bad { border-color: var(--neg); color: var(--neg); }
+.drawer h4 { margin: 8px 0 4px; } .drawer ul { margin: 0; padding-left: 18px; }
