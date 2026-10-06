@@ -20,19 +20,17 @@ const clip = (s, n) => { const t = String(s || '').replace(/\s+/g, ' ').trim(); 
  * THE ONE place the chat reads fee and margin settings. If fees become editable (settings-backed),
  * adapt this function only: return { listingFeeCents, transactionBps, processingBps, processingFixedCents, marginFloorCents }.
  */
+const pct = bps => `${(bps / 100).toFixed(1)}%`;
+
 function readFees({ settings }) {
-  const f = require('../domain/fees');
-  return {
-    listingFeeCents: f.LISTING_FEE_CENTS, transactionBps: f.TRANSACTION_FEE_BPS,
-    processingBps: f.PROCESSING_FEE_BPS, processingFixedCents: f.PROCESSING_FIXED_CENTS,
-    marginFloorCents: settings.getInt('margin_floor_cents', 200),
-  };
+  const { loadSchedule } = require('../domain/fee-schedule');
+  return { ...loadSchedule(settings), marginFloorCents: settings.getInt('margin_floor_cents', 200) };
 }
 
 function buildPlanContext({ db, settings, spend, fees = readFees }) {
   const lines = [];
   let f = null; try { f = fees({ settings }); } catch { f = null; }
-  if (f) lines.push(`Fees: listing ${usd(f.listingFeeCents)}, transaction ${(f.transactionBps / 100).toFixed(1)}%, processing ${(f.processingBps / 100).toFixed(1)}% + ${usd(f.processingFixedCents)}; margin floor ${usd(f.marginFloorCents)}. Margin = price - print cost - those fees (offsite ads, renewals not modelled).`);
+  if (f) lines.push(`Etsy fees (editable, schedule v${f.version}): listing ${usd(f.listingFeeCents)}, transaction ${pct(f.transactionBps)} of item+shipping, processing ${pct(f.processingBps)} of item+shipping+tax (tax est. ${pct(f.salesTaxBps)}) + ${usd(f.processingFixedCents)}, offsite ads ${pct(f.offsiteAdsBps)} on ${pct(f.offsiteAdsShareBps)} of sales${f.currencyConversionApplies ? `, currency conversion ${pct(f.currencyConversionBps)}` : ''}; one-time setup ${usd(f.setupFeeCents)}; margin floor ${usd(f.marginFloorCents)}.`);
 
   const counts = Object.fromEntries(db.prepare('SELECT stage, COUNT(*) AS n FROM products GROUP BY stage').all().map(r => [r.stage, r.n]));
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
