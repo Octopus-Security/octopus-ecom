@@ -191,6 +191,24 @@ function migrate(db) {
     updated_at TEXT NOT NULL
   )`);
   db.exec('CREATE INDEX IF NOT EXISTS batch_items_batch ON batch_items(batch_id, status)');
+  // Plan chat: conversations belong to the signed-in user (owner); someone else's id is a 404.
+  db.exec(`CREATE TABLE IF NOT EXISTS plan_conversations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner TEXT NOT NULL,
+    title TEXT NOT NULL DEFAULT '',
+    tier TEXT NOT NULL DEFAULT 'standard',
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+  )`);
+  db.exec('CREATE INDEX IF NOT EXISTS plan_conversations_owner ON plan_conversations(owner, updated_at)');
+  db.exec(`CREATE TABLE IF NOT EXISTS plan_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER NOT NULL REFERENCES plan_conversations(id),
+    role TEXT NOT NULL CHECK (role IN ('user','assistant')),
+    content TEXT NOT NULL,
+    model TEXT, tier TEXT, funding TEXT,
+    created_at TEXT NOT NULL
+  )`);
+  db.exec('CREATE INDEX IF NOT EXISTS plan_messages_conv ON plan_messages(conversation_id, id)');
   db.exec(`CREATE TABLE IF NOT EXISTS oauth_pending (
     state TEXT PRIMARY KEY, verifier_sealed TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL
   )`);

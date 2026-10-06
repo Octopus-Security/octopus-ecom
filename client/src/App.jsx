@@ -12,6 +12,7 @@ import SalesView from './components/SalesView.jsx';
 import BatchDialog from './components/BatchDialog.jsx';
 import BatchesView from './components/BatchesView.jsx';
 import PlaybooksView from './components/playbooks/PlaybooksView.jsx';
+import PlanChat from './components/PlanChat.jsx';
 
 export default function App() {
   const [summary, setSummary] = useState(null);
@@ -23,7 +24,7 @@ export default function App() {
   const [batchFocus, setBatchFocus] = useState(null);
   const [openId, setOpenId] = useState(null);
   const watchApi = useMemo(() => makeWatchApi(), []);
-  const [view, setView] = useState('board'); // 'board' | 'batches' | 'sales' | 'watch' | 'playbooks'
+  const [view, setView] = useState('board'); // 'board' | 'batches' | 'sales' | 'watch' | 'playbooks' | 'plan'
   const [flash, setFlash] = useState(''); // outcome of an Etsy connect round-trip (?etsy=...)
   const [pb, setPb] = useState({ id: null, productId: 0 });
   const [confirm, setConfirm] = useState(null); // {summary, phrase?, run(token, typed)}
@@ -72,6 +73,7 @@ export default function App() {
       {view === 'watch' && <WatchPanel api={watchApi} />}
       {view === 'playbooks' && <PlaybooksView api={watchApi} initialId={pb.id} initialProductId={pb.productId}
         products={board ? Object.values(board.columns).flat().map(p => ({ id: p.id, title: p.title })) : []} />}
+      {view === 'plan' && <PlanChat />}
       {drawer && <SettingsDrawer onClose={() => { setDrawer(false); refresh(); }} askConfirm={setConfirm} />}
       {composer && <Composer onClose={() => { setComposer(false); refresh(); }} onChanged={refresh} onOpen={(id) => { setComposer(false); setOpenId(id); }} />}
       {batchDialog && <BatchDialog onClose={() => setBatchDialog(false)} onStarted={(id) => { setBatchDialog(false); setBatchFocus(id); setView('batches'); refresh(); }} />}

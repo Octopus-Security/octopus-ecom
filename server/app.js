@@ -8,6 +8,8 @@ const { BUILD, STARTED_AT } = require('./build');
 const { router, errorHandler } = require('./routes/api');
 const { createWatchRouter } = require('./watch');
 const { createPlaybookRouter } = require('./playbooks');
+const { createPlanRouter } = require('./plan/routes');
+const { actorMiddleware } = require('./llm/actor');
 
 const DIST = path.join(__dirname, '..', 'client', 'dist');
 
@@ -28,10 +30,12 @@ function buildApp(deps) {
   app.use(deps.auth.identify);
   app.use(deps.auth.requireOwner);
   app.use(sameOrigin);
+  app.use(actorMiddleware); // who a model call is billed to (cortex)
 
   // Before the /api router, whose catch-all 404 would swallow these. Same owner auth + sameOrigin as above.
   app.use('/api/watch', createWatchRouter(deps, { service: deps.watch }));
   app.use('/api/playbooks', createPlaybookRouter(deps));
+  app.use('/api/plan', createPlanRouter(deps));
   app.use('/api', router(deps));
 
   if (fs.existsSync(path.join(DIST, 'index.html'))) {

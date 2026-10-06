@@ -45,5 +45,5 @@ stops. It pauses when the daily spend cap is reached and survives a restart. **B
 ## Status
 
 All milestones (M0-M4) are built; the Etsy path has never been run against a live shop (it is tested against fakes built from Etsy's
-published OpenAPI document). Generation is real with an OpenAI key (BYOK, daily cap) even in dry-run; otherwise stubbed. Known gaps are
+published OpenAPI document). Generation is real with an OpenAI key (BYOK, daily cap) even in dry-run; otherwise stubbed. Text generation (listing copy, ideas, the **Plan** chat tab) goes through octopus-cortex when `INTERNAL_SECRET` is set, billed to the signed-in user. Known gaps are
 listed under "Not yet built" in `ARCHITECTURE.md`.

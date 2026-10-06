@@ -86,6 +86,8 @@ function loadConfig(env = process.env) {
       provider: (env.LLM_PROVIDER || '').trim().toLowerCase(),
       baseUrl: (env.LLM_BASE_URL || '').trim(),
       routerPath: (env.ROUTER_PATH || '').trim(),
+      // cortex: model calls billed to the signed-in user (see llm/cortex.js). Used when the secret is set, or LLM_PROVIDER=cortex.
+      cortex: { url: (env.CORTEX_URL || '').trim().replace(/\/+$/, ''), secret: env.INTERNAL_SECRET || '' },
       // Optional per-tier model overrides (win over the router table and the built-in defaults).
       models: { cheap: (env.LLM_MODEL_CHEAP || '').trim(), standard: (env.LLM_MODEL_STANDARD || '').trim(), deep: (env.LLM_MODEL_DEEP || '').trim() },
       // Optional price for models the built-in table does not know, in dollars per 1M tokens.

@@ -16,7 +16,8 @@ server/
   db.js settings.js spend.js confirm.js dryrun.js events.js
   domain/         stages.js (state machine), fees.js, fee-schedule.js, etsy-rules.js, blocklist.js (+ blocklist-seed.js), print-readiness.js
   orchestrator.js batch queue (M4)
-  llm/            complete() + stub / openai / openai-compatible + router-path.js
+  llm/            complete() + chat() + stub / openai / openai-compatible / cortex + router-path.js, actor.js
+  plan/           Plan chat: context.js (compact shop summary), routes.js (/api/plan, per-user conversations)
   adapters/       http.js, contract.js, route.js, <kind>/{index,stub,<real>}.js
   routes/api.js   REST API
   watch/          schedulers, watchers, alerts (supplier, performance, keywords)
@@ -133,6 +134,21 @@ so a refusal makes no request) and the ACTUAL cost is recorded in `costs` right 
 a later step fails. A cap refusal is a **pause**, not a failure: the product keeps its stage, a note
 event is written, the API answers 429. Cap hit does not fall back to a stub image (that would hide that
 generation is paused).
+
+**cortex provider (`llm/cortex.js`).** With `INTERNAL_SECRET` set (or `LLM_PROVIDER=cortex`) every model call goes to
+`${CORTEX_URL}/api/internal/llm` (non-stream) or `/llm/stream` (the Plan chat) with the `x-internal-secret` header and the
+signed-in `username`, so cortex bills that account (own key, then granted credits, else a 402). It outranks the BYOK providers
+when the secret is set. cortex takes aliases, so `cheap`/`standard`/`deep` map to `haiku`/`sonnet`/`opus`; there is no JSON mode
+(an instruction is appended and callers still parse defensively). Who is asking comes from `llm/actor.js` (request-scoped); work
+with no request (batch recovery/tick, watchers) is billed to the first `OWNER_USERNAMES` entry. cortex meters these calls, so
+`costCents` is 0: they are logged (`[llm.cortex]`) but not counted against the daily cap. Images stay on the OpenAI path.
+Contract read from cortex's `routes/internal-llm.js` 2026-10-06; not yet exercised against a live cortex.
+
+**Plan chat (`plan/`).** Tab "Plan": a conversation for niches, pricing and what to make next. Each turn the server builds
+a system prompt of about 600 tokens or less from this app's data (fee/margin settings via the one `readFees()` function, product counts
+by stage, recent products with projected margin, real sales and NET, playbook titles) and sends the user's own last 20 messages.
+Conversations are in `plan_conversations`/`plan_messages` with an `owner` column; another user's id is a 404. It takes no actions.
+Only cortex (or the offline stub) answers; a BYOK provider is refused rather than spending the shop's key on open-ended chat.
 
 **ListingCopy.** The LLM is asked (tier `standard`) for JSON `{title, tags, description}` using buyer
 search phrasing, no keyword stuffing, no brand/trademark terms. The model's output is never trusted:
