@@ -4,7 +4,7 @@
 
 **When to use:** The supplier watcher flagged a product (margin <= 0 or below MARGIN_FLOOR). The flag blocks autopublish; a live listing keeps selling at the old price until you act.
 
-Projected margin = list price - POD base cost - listing fee - transaction fee - processing fee (see server/domain/fees.js; the fee constants there carry their own provenance and are third-party-corroborated only, as Etsy's fee pages returned HTTP 403). Raising price is a human decision; this tool never edits a live price.
+Projected margin = list price - POD base cost - listing fee - transaction fee - processing fee (see server/domain/fee-schedule.js; the rates come from Etsy's own fee page as read by the owner on 2026-10-06, and are editable in Settings). Raising price is a human decision; this tool never edits a live price.
 
 ## Steps
 

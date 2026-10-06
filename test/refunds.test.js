@@ -26,7 +26,7 @@ test('a refund on a receipt is subtracted from its sale; refund amount, key and 
   const out = await d.sales.sync();
   assert.equal(out.refundsSeen, 1); assert.equal(out.refundsApplied, 1); assert.equal(out.refundedCents, 1000);
   const [s] = sale(d, '1001');
-  const fees = bps(2500, 650) + bps(2500, 300) + 25;
+  const fees = bps(2500, 650) + bps(2500 + bps(2500, 700), 300) + 25; // processing base includes the estimated 7% tax
   assert.equal(s.refund_cents, 1000); assert.equal(s.net_cents, 2500 - fees - 1000);
   const r = d.db.prepare('SELECT * FROM refunds').get();
   assert.equal(r.amount_cents, 1000); assert.equal(r.applied_cents, 1000); assert.equal(r.external_order_id, '1001'); assert.equal(r.reason, 'buyer request'); assert.equal(r.refund_key, `1001:${T0 + 3600}:1000:1`);

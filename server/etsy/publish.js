@@ -14,7 +14,8 @@
  * reconcile): a fee is only real once a listing exists, so it is not charged on a publish that never materialised.
  */
 const { S, parseFlags } = require('../domain/stages');
-const { LISTING_FEE_CENTS, projectMargin } = require('../domain/fees');
+const { projectMargin } = require('../domain/fees');
+const { loadSchedule } = require('../domain/fee-schedule');
 const { enforceCopy } = require('../domain/etsy-rules');
 const { checkBlocklist } = require('../domain/blocklist');
 const { PipelineError } = require('../pipeline');
@@ -24,9 +25,10 @@ const { tx } = require('../db');
 const usd = c => `$${(c / 100).toFixed(2)}`;
 const isStubId = id => !id || String(id).startsWith('stub-');
 
-function makePublisher({ db, stages, adapters, pipeline, spend, dryRun, etsy, log = console, env = process.env, sleep = ms => new Promise(r => setTimeout(r, ms)) }) {
+function makePublisher({ db, settings = null, stages, adapters, pipeline, spend, dryRun, etsy, log = console, env = process.env, sleep = ms => new Promise(r => setTimeout(r, ms)) }) {
   const pollAttempts = Number(env.PUBLISH_POLL_ATTEMPTS) >= 0 && env.PUBLISH_POLL_ATTEMPTS !== undefined ? Number(env.PUBLISH_POLL_ATTEMPTS) : 3;
   const pollMs = Number(env.PUBLISH_POLL_MS) >= 0 && env.PUBLISH_POLL_MS !== undefined ? Number(env.PUBLISH_POLL_MS) : 2000;
+  const listingFee = () => loadSchedule(settings).listingFeeCents;
   const get = id => db.prepare('SELECT * FROM products WHERE id = ?').get(id);
   const listingOf = id => db.prepare("SELECT * FROM listings WHERE product_id = ? AND platform = 'etsy' ORDER BY id DESC LIMIT 1").get(id);
   const storeFor = p => (p.store_id ? etsy.row(p.store_id) : null) || etsy.etsyStore();
@@ -62,7 +64,7 @@ function makePublisher({ db, stages, adapters, pipeline, spend, dryRun, etsy, lo
     const store = storeFor(p); const l = listingOf(p.id); const flags = parseFlags(p);
     const parts = [`Publish product #${p.id}${l && l.title ? ` "${l.title}"` : ''}.`];
     parts.push(`Shop: ${store && store.shop_name ? `Etsy shop "${store.shop_name}"` : 'no connected Etsy shop'}.`);
-    parts.push(`List price ${Number.isInteger(p.list_price_cents) ? usd(p.list_price_cents) : 'unset'}; Etsy listing fee ${usd(LISTING_FEE_CENTS)} is charged by Etsy when the listing is created.`);
+    parts.push(`List price ${Number.isInteger(p.list_price_cents) ? usd(p.list_price_cents) : 'unset'}; Etsy listing fee ${usd(listingFee())} is charged by Etsy when the listing is created.`);
     if (Number.isInteger(p.projected_margin_cents)) parts.push(`Projected unit margin ${usd(p.projected_margin_cents)}${p.pod_cost_source === 'estimate' ? ' (on an ESTIMATED base cost)' : ''}.`);
     if (flags.length) parts.push(`FLAGS: ${flags.map(f => f.code + (f.detail ? ` (${f.detail})` : '')).join('; ')}.`);
     if (dry) parts.push(`DRY_RUN is on: this is only SIMULATED. Nothing reaches Printify or Etsy and the stage will not change.${bl.length ? ` A live publish would currently be refused: ${bl.map(x => x.code).join(', ')}.` : ''}`);
@@ -80,11 +82,11 @@ function makePublisher({ db, stages, adapters, pipeline, spend, dryRun, etsy, lo
     tx(db, () => {
       db.prepare('UPDATE listings SET external_id = ?, store_id = ?, status = CASE WHEN status = \'publishing\' THEN \'pending\' ELSE status END WHERE id = ?').run(String(externalId), store.id, l.id);
       if (!l.fee_recorded) {
-        spend.addCost({ productId: p.id, kind: 'listing_fee', amountCents: LISTING_FEE_CENTS, note: `Etsy listing fee, listing ${externalId}` });
+        spend.addCost({ productId: p.id, kind: 'listing_fee', amountCents: listingFee(), note: `Etsy listing fee, listing ${externalId}` });
         db.prepare('UPDATE listings SET fee_recorded = 1 WHERE id = ?').run(l.id);
       }
     });
-    productEvent(db, p.id, { actor: 'human', note: `Etsy listing id ${externalId} known; ${usd(LISTING_FEE_CENTS)} listing fee recorded` });
+    productEvent(db, p.id, { actor: 'human', note: `Etsy listing id ${externalId} known; ${usd(listingFee())} listing fee recorded` });
   }
 
   /**
@@ -209,7 +211,7 @@ function makePublisher({ db, stages, adapters, pipeline, spend, dryRun, etsy, lo
     if (changes.tags) sum.push(`Tags become: ${changes.tags.join(', ')}.`);
     if (priceChange) {
       sum.push(`Price changes from ${priceChange.fromCents === null ? 'unset' : usd(priceChange.fromCents)} to ${usd(priceChange.toCents)}.`);
-      if (Number.isInteger(p.pod_base_cost_cents)) sum.push(`Projected unit margin at the new price: ${usd(projectMargin({ listPriceCents: priceChange.toCents, shippingCents: p.shipping_cents || 0, podBaseCostCents: p.pod_base_cost_cents }).marginCents)}.`);
+      if (Number.isInteger(p.pod_base_cost_cents)) sum.push(`Projected unit margin at the new price: ${usd(projectMargin({ listPriceCents: priceChange.toCents, shippingCents: p.shipping_cents || 0, podBaseCostCents: p.pod_base_cost_cents }, loadSchedule(settings)).marginCents)}.`);
       sum.push('The price is changed on Etsy; Printify may overwrite it if the product is published again.');
     }
     sum.push(dryRun.isOn() ? 'DRY_RUN is on: simulated only, nothing is sent.' : 'This changes the real marketplace listing.');

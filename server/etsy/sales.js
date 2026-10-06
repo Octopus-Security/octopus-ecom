@@ -23,13 +23,16 @@
  *    (default 30) so a refund issued after the sale is seen; a refund older than that window on a receipt never re-read is not.
  */
 const { tx } = require('../db');
-const { TRANSACTION_FEE_BPS, PROCESSING_FEE_BPS, PROCESSING_FIXED_CENTS } = require('../domain/fees');
+const { loadSchedule } = require('../domain/fee-schedule');
 
 const OVERLAP_SECONDS = 2 * 24 * 3600; // re-read this far back each time; idempotency makes overlap free
 const bps = (c, r) => Math.round((c * r) / 10000);
 
-function makeSales({ db, adapters, spend, etsy, log = console, now = Date.now, lookbackDays = 30 }) {
-  const computedProcessing = gross => bps(gross, PROCESSING_FEE_BPS) + PROCESSING_FIXED_CENTS;
+function makeSales({ db, adapters, spend, etsy, settings = null, log = console, now = Date.now, lookbackDays = 30 }) {
+  // Fallbacks only: Etsy's reported processing fee is the truth and is used whenever the API gives it. The transaction fee has no API
+  // field, so it is always computed (on gross, which excludes tax); the processing fallback adds the estimated tax to its base.
+  const sched = () => loadSchedule(settings);
+  const computedProcessing = (gross, s) => bps(gross + bps(gross, s.salesTaxBps), s.processingBps) + s.processingFixedCents;
 
   async function sync({ actor = 'human', auto = false } = {}) {
     const real = adapters.storefront.describe().methods.getReceipts === 'real';
@@ -52,6 +55,7 @@ function makeSales({ db, adapters, spend, etsy, log = console, now = Date.now, l
     const byExt = new Map(db.prepare("SELECT l.id AS listing_id, l.external_id, l.product_id, p.pod_base_cost_cents AS base FROM listings l JOIN products p ON p.id = l.product_id WHERE l.platform = 'etsy' AND l.external_id IS NOT NULL").all().map(r => [r.external_id, r]));
     const out = { ok: true, source, receipts: got.receipts.length, newSales: 0, duplicates: 0, tracked: 0, untracked: 0, cogsCents: 0, grossCents: 0, refundsSeen: 0, refundsApplied: 0, refundsDuplicate: 0, refundsUnmatched: 0, refundedCents: 0, complete: got.complete !== false, simulated: Boolean(got.simulated), requests: got.requests || 0 };
 
+    const sch = sched();
     const insert = db.prepare(`INSERT INTO sales(listing_id, external_order_id, transaction_id, store_id, product_id, external_listing_id, quantity, gross_cents, etsy_fees_cents, processing_fee_cents, net_cents, cogs_cents, fee_source, source, ts)
       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`);
     for (const r of got.receipts) {
@@ -64,9 +68,9 @@ function makeSales({ db, adapters, spend, etsy, log = console, now = Date.now, l
       lines.forEach((x, i) => {
         const last = i === lines.length - 1;
         let processing;
-        if (apiFee === null) processing = computedProcessing(x.gross);
+        if (apiFee === null) processing = computedProcessing(x.gross, sch);
         else { processing = last ? feeLeft : Math.round(apiFee * (totalGross ? x.gross / totalGross : 1 / lines.length)); feeLeft -= processing; }
-        const etsyFee = bps(x.gross, TRANSACTION_FEE_BPS);
+        const etsyFee = bps(x.gross, sch.transactionBps);
         const net = x.gross - etsyFee - processing;
         const lst = x.t.listingId ? byExt.get(x.t.listingId) : null;
         const cogs = !out.simulated && lst && Number.isInteger(lst.base) ? lst.base * x.t.quantity : null;

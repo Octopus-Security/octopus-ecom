@@ -86,7 +86,7 @@ export default function Composer({ onClose, onChanged, onOpen }) {
         </div>
         {preview && (
           <div className={`margin ${preview.marginCents <= 0 ? 'neg' : preview.marginCents < preview.floorCents ? 'warn' : 'pos'}`} aria-live="polite">
-            Projected margin {baseCost === null ? 'before base cost' : ''} <b>{dollars(preview.marginCents)}</b> (floor {dollars(preview.floorCents)}) &middot; listing {dollars(preview.listingFeeCents)}, transaction {dollars(preview.transactionFeeCents)}, processing {dollars(preview.processingFeeCents)}
+            Projected margin {baseCost === null ? 'before base cost' : ''} <b>{dollars(preview.marginCents)}{preview.marginPct !== null ? ` (${preview.marginPct}%)` : ''}</b> (floor {dollars(preview.floorCents)}) &middot; listing {dollars(preview.listingFeeCents)}, transaction {dollars(preview.transactionFeeCents)}, processing {dollars(preview.processingFeeCents)}{preview.currencyConversionFeeCents > 0 ? `, currency ${dollars(preview.currencyConversionFeeCents)}` : ''}{preview.offsiteAdsFeeCents > 0 ? `, offsite ads ${dollars(preview.offsiteAdsFeeCents)}` : ''}
             {baseCost === null ? <div className="small muted">Printify exposes the base cost only after the product exists; the real margin shows on the card once it is created.</div> : <> &middot; base cost {dollars(baseCost)}</>}
             {preview.flags.map((x) => <span className="flag" key={x.code}>{x.code}</span>)}
           </div>)}

@@ -7,6 +7,8 @@ const { STAGES, S, parseFlags, approvalSummary } = require('../domain/stages');
 const { productEvent } = require('../events');
 const { ConfirmError } = require('../confirm');
 const { KEY_NAMES } = require('../keystore');
+const feeSchedule = require('../domain/fee-schedule');
+const fees = require('../domain/fees');
 
 function actorOf() { return 'human'; } // every request here is an authenticated owner
 
@@ -146,6 +148,25 @@ function router(deps) {
     const file = d && d.image_path ? path.resolve(root, d.image_path) : null;
     if (!file || !file.startsWith(root + path.sep) || !fs.existsSync(file)) return res.status(404).json({ error: 'Not found' });
     res.set('Cache-Control', 'private, max-age=3600').type('png').sendFile(file);
+  }));
+
+  // ---- Etsy fee schedule: editable rates (cents / basis points), verified defaults, and the pricing helper ----
+  const feePayload = () => ({ ok: true, schedule: feeSchedule.loadSchedule(settings), defaults: feeSchedule.DEFAULTS, fields: feeSchedule.FIELDS, verifiedOn: feeSchedule.VERIFIED_ON, verifiedSource: feeSchedule.VERIFIED_SOURCE });
+  r.get('/fees', wrap(async (_req, res) => { res.json(feePayload()); }));
+  // POST /api/fees {schedule:{...partial}} — validated; applies to FUTURE projections only (each projection records the version it used).
+  r.post('/fees', wrap(async (req, res) => {
+    feeSchedule.saveSchedule(settings, (req.body || {}).schedule);
+    res.json(feePayload());
+  }));
+  r.post('/fees/reset', wrap(async (_req, res) => { feeSchedule.resetSchedule(settings); res.json(feePayload()); }));
+  // POST /api/price-calc {podBaseCostCents, podShippingCostCents, shippingCents, marginCents|marginPct, listPriceCents?}
+  r.post('/price-calc', wrap(async (req, res) => {
+    const b = req.body || {}; const sched = feeSchedule.loadSchedule(settings);
+    try {
+      const suggested = fees.minListPrice({ podBaseCostCents: b.podBaseCostCents, podShippingCostCents: b.podShippingCostCents ?? 0, shippingCents: b.shippingCents ?? 0, marginCents: b.marginCents, marginPct: b.marginPct }, sched);
+      const atPrice = b.listPriceCents === undefined ? null : fees.projectMargin({ listPriceCents: b.listPriceCents, shippingCents: b.shippingCents ?? 0, podBaseCostCents: b.podBaseCostCents, podShippingCostCents: b.podShippingCostCents ?? 0 }, sched);
+      res.json({ ok: true, suggested, atPrice, breakEvenAtPrice: atPrice ? fees.breakEvenUnits(atPrice.marginCents, sched.setupFeeCents) : null, setupFeeCents: sched.setupFeeCents });
+    } catch (e) { res.status(400).json({ error: e.message }); }
   }));
 
   // GET /api/settings — presence only, never values.

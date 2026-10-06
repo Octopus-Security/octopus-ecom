@@ -14,7 +14,7 @@ server/
   auth.js         sso | dev, owner gate, sameOrigin
   crypto.js keystore.js credentials.js redact.js log.js   sealed credentials, redacted logs
   db.js settings.js spend.js confirm.js dryrun.js events.js
-  domain/         stages.js (state machine), fees.js, etsy-rules.js, blocklist.js (+ blocklist-seed.js), print-readiness.js
+  domain/         stages.js (state machine), fees.js, fee-schedule.js, etsy-rules.js, blocklist.js (+ blocklist-seed.js), print-readiness.js
   orchestrator.js batch queue (M4)
   llm/            complete() + stub / openai / openai-compatible + router-path.js
   adapters/       http.js, contract.js, route.js, <kind>/{index,stub,<real>}.js
@@ -319,9 +319,8 @@ shapes plus the exact value of every sealed secret and credential env var.
 
 ## Money
 
-Integer cents everywhere. Fee constants only in `server/domain/fees.js`, each with a
-provenance comment. Projected margin = list price - POD base cost - listing fee -
-transaction fee(list + shipping) - processing fee. NET (summary) = sum of
+Integer cents everywhere. Fee rates only in `server/domain/fee-schedule.js` (verified 2026-10-06, Etsy's own fee page via the owner; assumed items marked), stored as the versioned `fee_schedule` setting and editable in Settings. Projected margin = list price - POD base cost - listing fee -
+transaction fee(list + shipping, tax-exclusive) - processing fee(list + shipping + estimated tax) - currency conversion (toggle) - expected Offsite Ads (rate x share), itemised by `projectMargin(input, schedule)`; `products.margin_breakdown` snapshots the lines and schedule version. `POST /api/price-calc` solves the minimum list price for a target and the set-up-fee break-even. NET (summary) = sum of
 `sales.net_cents` (gross less Etsy and processing fees) minus every `costs` row.
 `MARGIN_FLOOR` and `DAILY_SPEND_CAP` are dollars in env, cents internally; the daily
 cap uses the America/New_York calendar day.

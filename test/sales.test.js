@@ -35,7 +35,7 @@ test('ingest: gross/fees/net per transaction, COGS written per sale, untracked l
   assert.equal(a.net_cents, 5400 - a.etsy_fees_cents - 191); assert.equal(a.cogs_cents, 2674); assert.equal(a.product_id, pid); assert.ok(a.listing_id);
   const b = d.db.prepare('SELECT * FROM sales WHERE external_order_id=?').get('1002');
   assert.equal(b.listing_id, null); assert.equal(b.store_id, store); assert.equal(b.cogs_cents, null, 'unknown COGS stays unknown');
-  assert.equal(b.fee_source, 'computed'); assert.equal(b.processing_fee_cents, bps(1800, 300) + 25); assert.equal(b.etsy_fees_cents, bps(1800, 650));
+  assert.equal(b.fee_source, 'computed'); assert.equal(b.processing_fee_cents, bps(1800 + bps(1800, 700), 300) + 25); assert.equal(b.etsy_fees_cents, bps(1800, 650));
   // COGS is a `pod` cost row = base cost x qty, attributed to the product
   const cogs = d.db.prepare("SELECT * FROM costs WHERE kind='pod'").all();
   assert.equal(cogs.length, 1); assert.equal(cogs[0].amount_cents, 1337 * 2); assert.equal(cogs[0].product_id, pid);

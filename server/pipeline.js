@@ -31,7 +31,8 @@ const printReadiness = require('./domain/print-readiness');
 const { enforceCopy } = require('./domain/etsy-rules');
 const { designPrompt } = require('./domain/prompts');
 const { productEvent } = require('./events');
-const { projectMargin, marginFlags } = require('./domain/fees');
+const { projectMargin, marginFlags, snapshot } = require('./domain/fees');
+const { loadSchedule } = require('./domain/fee-schedule');
 
 const PRINT_W = 4500; const PRINT_H = 5400; // default print area until a blueprint says otherwise (M2)
 
@@ -291,13 +292,13 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
     const floor = settings ? settings.getInt('margin_floor_cents', 200) : 200;
     replaceFlags(id, 'pod_cost_', p.pod_cost_source === 'estimate' ? [{ code: 'pod_cost_estimated', detail: 'base cost is a stub estimate, not a Printify price', source: 'pipeline' }] : []);
     if (Number.isInteger(p.list_price_cents) && Number.isInteger(p.pod_base_cost_cents)) {
-      const m = projectMargin({ listPriceCents: p.list_price_cents, shippingCents: p.shipping_cents || 0, podBaseCostCents: p.pod_base_cost_cents });
+      const m = projectMargin({ listPriceCents: p.list_price_cents, shippingCents: p.shipping_cents || 0, podBaseCostCents: p.pod_base_cost_cents }, loadSchedule(settings));
       replaceFlags(id, 'margin_', marginFlags(m.marginCents, floor).map(f => ({ ...f, source: 'pipeline' })));
-      db.prepare('UPDATE products SET projected_margin_cents = ? WHERE id = ?').run(m.marginCents, id);
+      db.prepare('UPDATE products SET projected_margin_cents = ?, margin_breakdown = ? WHERE id = ?').run(m.marginCents, snapshot(m), id);
       return m;
     }
     replaceFlags(id, 'margin_', []);
-    db.prepare('UPDATE products SET projected_margin_cents = NULL WHERE id = ?').run(id);
+    db.prepare('UPDATE products SET projected_margin_cents = NULL, margin_breakdown = NULL WHERE id = ?').run(id);
     return null;
   }
 
@@ -306,7 +307,7 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
     const floor = settings ? settings.getInt('margin_floor_cents', 200) : 200;
     const ints = [listPriceCents, shippingCents, podBaseCostCents];
     if (!ints.every(n => Number.isInteger(n) && n >= 0)) throw new PipelineError('listPriceCents, shippingCents and podBaseCostCents must be non-negative integers');
-    const m = projectMargin({ listPriceCents, shippingCents, podBaseCostCents });
+    const m = projectMargin({ listPriceCents, shippingCents, podBaseCostCents }, loadSchedule(settings));
     return { ...m, floorCents: floor, flags: marginFlags(m.marginCents, floor) };
   }
 
@@ -500,8 +501,10 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
   function unitEconomics(p) {
     if (!Number.isInteger(p.list_price_cents) || !Number.isInteger(p.pod_base_cost_cents)) return null;
     const floor = settings ? settings.getInt('margin_floor_cents', 200) : 200;
-    const m = projectMargin({ listPriceCents: p.list_price_cents, shippingCents: p.shipping_cents || 0, podBaseCostCents: p.pod_base_cost_cents });
-    return { listPriceCents: p.list_price_cents, shippingCents: p.shipping_cents || 0, costSource: p.pod_cost_source, floorCents: floor, ...m };
+    const m = projectMargin({ listPriceCents: p.list_price_cents, shippingCents: p.shipping_cents || 0, podBaseCostCents: p.pod_base_cost_cents }, loadSchedule(settings));
+    // `m` is the projection under the schedule in force now; `stored` is what was recorded when the margin was last written, under its own version.
+    let stored = null; try { stored = p.margin_breakdown ? JSON.parse(p.margin_breakdown) : null; } catch { /* unreadable snapshot: ignore */ }
+    return { listPriceCents: p.list_price_cents, shippingCents: p.shipping_cents || 0, costSource: p.pod_cost_source, floorCents: floor, ...m, stored };
   }
 
   const mockupUrl = m => (m.file ? `/api/mockups/${m.id}/file` : m.url);

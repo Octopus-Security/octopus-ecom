@@ -138,6 +138,7 @@ function migrate(db) {
   addColumn(db, 'listings', 'fee_recorded', 'INTEGER NOT NULL DEFAULT 0');      // the listing fee is charged to costs once
   addColumn(db, 'listings', 'views', 'INTEGER');
   addColumn(db, 'listings', 'checked_at', 'TEXT');
+  addColumn(db, 'products', 'margin_breakdown', 'TEXT');                        // JSON snapshot of the last projection: fee lines + the fee schedule version/values it used
   addColumn(db, 'sales', 'transaction_id', 'TEXT');
   addColumn(db, 'sales', 'store_id', 'INTEGER');
   addColumn(db, 'sales', 'product_id', 'INTEGER');

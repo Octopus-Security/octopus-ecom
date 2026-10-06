@@ -59,7 +59,7 @@ The watcher only reads. Nothing is changed on Etsy or at the provider automatica
     id: 'margin-fell',
     title: 'Base cost rose and margin fell below the floor',
     whenToUse: 'The supplier watcher flagged a product (margin <= 0 or below MARGIN_FLOOR). The flag blocks autopublish; a live listing keeps selling at the old price until you act.',
-    background: `Projected margin = list price - POD base cost - listing fee - transaction fee - processing fee (see server/domain/fees.js; the fee constants there carry their own provenance and are third-party-corroborated only, as Etsy's fee pages returned HTTP 403). Raising price is a human decision; this tool never edits a live price.`,
+    background: `Projected margin = list price - POD base cost - listing fee - transaction fee - processing fee (see server/domain/fee-schedule.js; the rates come from Etsy's own fee page as read by the owner on 2026-10-06, and are editable in Settings). Raising price is a human decision; this tool never edits a live price.`,
     steps: [
       { id: 'see', title: 'Read the alert: old and new base cost, new projected margin', check: 'margin_above_floor' },
       { id: 'verify', title: 'Confirm the new cost at the provider (not a transient read)' },

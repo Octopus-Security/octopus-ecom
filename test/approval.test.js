@@ -46,18 +46,18 @@ test('draft: mockups exist (thumbnail is the first mockup), base cost + projecte
   assert.equal(det.mockups.length, 2); assert.equal(det.mockups[0].isDefault, true);
   const png = await fetch(base + det.mockups[0].url); assert.equal(png.status, 200); assert.equal(png.headers.get('content-type'), 'image/png');
   assert.equal(det.product.pod_base_cost_cents, 1250); assert.equal(det.product.pod_cost_source, 'estimate');
-  // 3000 - 1250 - 20 listing - 195 txn (6.5%) - 115 processing (3% + 25) = 1420
-  assert.equal(det.product.projected_margin_cents, 1420); assert.equal(det.economics.marginCents, 1420);
+  // 3000 - 1250 - 20 listing - 195 txn (6.5%, no tax) - 121 processing (3% of 3210 incl. est. 7% tax, + 25) = 1414
+  assert.equal(det.product.projected_margin_cents, 1414); assert.equal(det.economics.marginCents, 1414);
   assert.deepEqual(det.product.flags.map(f => f.code), ['pod_cost_estimated']);
   assert.equal(det.costs.length, 0); assert.equal(det.costTotalCents, 0);
   const card = (await j('GET', '/api/products')).body.columns.listing_drafted.find(c => c.id === id);
-  assert.equal(card.thumbnailKind, 'mockup'); assert.match(card.thumbnail, /^\/api\/mockups\/\d+\/file$/); assert.equal(card.projectedMarginCents, 1420);
+  assert.equal(card.thumbnailKind, 'mockup'); assert.match(card.thumbnail, /^\/api\/mockups\/\d+\/file$/); assert.equal(card.projectedMarginCents, 1414);
   assert.equal((await j('GET', '/api/mockups/99999/file')).status, 404);
 });
 
 test('margin preview is the same math; margin <= 0 and below floor are flagged, a healthy margin is not', async () => {
   const pv = (await j('GET', '/api/margin-preview?listPrice=3000&baseCost=1250')).body;
-  assert.equal(pv.marginCents, 1420); assert.deepEqual(pv.flags, []);
+  assert.equal(pv.marginCents, 1414); assert.deepEqual(pv.flags, []);
   assert.equal((await j('GET', '/api/margin-preview?listPrice=abc&baseCost=1')).status, 400);
   const id = await drafted(30);
   let p = (await j('PATCH', `/api/products/${id}/price`, { listPrice: 14 })).body.product; // 1400-1250-20-91-67 = -28
@@ -165,4 +165,20 @@ test('guards: POD step needs blueprint, price and a design; flagging a blocklist
   await j('POST', `/api/products/${bid}/draft-listing`, {});
   const codes = (await get(bid)).product.flags.map(f => f.code);
   assert.ok(codes.includes('blocklist') && codes.includes('pod_cost_estimated'));
+});
+
+test('fee + price-calc API: edit validates, applies to the preview, resets; solver route meets its target', async () => {
+  const g = (await j('GET', '/api/fees')).body;
+  assert.equal(g.schedule.version, 0); assert.equal(g.verifiedOn, '2026-10-06'); assert.equal(g.defaults.transactionBps, 650);
+  assert.equal((await j('POST', '/api/fees', { schedule: { transactionBps: -1 } })).status, 400);
+  assert.equal((await j('POST', '/api/fees', { schedule: { bogus: 1 } })).status, 400);
+  const saved = (await j('POST', '/api/fees', { schedule: { transactionBps: 1000 } })).body;
+  assert.equal(saved.schedule.version, 1);
+  const pv = (await j('GET', '/api/margin-preview?listPrice=3000&baseCost=1250')).body;
+  assert.equal(pv.transactionFeeCents, 300); assert.equal(pv.scheduleVersion, 1);
+  const calc = (await j('POST', '/api/price-calc', { podBaseCostCents: 1250, podShippingCostCents: 450, shippingCents: 499, marginCents: 500, listPriceCents: 2000 })).body;
+  assert.ok(calc.suggested.projection.marginCents >= 500); assert.equal(calc.atPrice.listPriceCents, 2000); assert.equal(calc.setupFeeCents, 2900);
+  assert.equal((await j('POST', '/api/price-calc', { podBaseCostCents: 100, marginPct: 99 })).status, 400);
+  const reset = (await j('POST', '/api/fees/reset')).body;
+  assert.equal(reset.schedule.transactionBps, 650); assert.equal(reset.schedule.version, 2);
 });

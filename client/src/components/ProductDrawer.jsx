@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, dollars } from '../api.js';
+import FeeBreakdown from './FeeBreakdown.jsx';
 
 // Etsy limits, shown live. Corroborated 2026-10-05, official page not read: see server/domain/etsy-rules.js.
 const LIM = { title: 140, tags: 13, tag: 20 };
@@ -112,16 +113,10 @@ export default function ProductDrawer({ id, onClose, onChanged, askConfirm }) {
       <section>
         <h4>Print provider and economics</h4>
         <div className="small muted">Blueprint {p.blueprint || '-'} / provider {p.print_provider_id || '-'} / {p.pod_variant_ids.length} variant(s){p.print_spec ? ` / print area ${p.print_spec.positions.map((a) => `${a.position} ${a.width}x${a.height}px`).join(', ')}` : ''}</div>
-        {eco ? (
-          <table className="econ"><tbody>
-            <tr><td>List price</td><td>{dollars(eco.listPriceCents)}</td></tr>
-            <tr><td>POD base cost ({eco.costSource === 'estimate' ? 'estimate' : eco.costSource})</td><td>-{dollars(eco.podBaseCostCents)}</td></tr>
-            <tr><td>Listing fee</td><td>-{dollars(eco.listingFeeCents)}</td></tr>
-            <tr><td>Transaction fee</td><td>-{dollars(eco.transactionFeeCents)}</td></tr>
-            <tr><td>Processing fee</td><td>-{dollars(eco.processingFeeCents)}</td></tr>
-            <tr><td><b>Projected margin</b> (floor {dollars(eco.floorCents)})</td><td className={eco.marginCents <= 0 ? 'neg' : eco.marginCents < eco.floorCents ? 'warn' : 'pos'}><b>{dollars(eco.marginCents)}</b></td></tr>
-          </tbody></table>
-        ) : <div className="muted small">No base cost yet: create the print-provider product.</div>}
+        {eco ? (<>
+          <FeeBreakdown m={eco} floorCents={eco.floorCents} costLabel={`POD base cost (${eco.costSource === 'estimate' ? 'estimate' : eco.costSource})`} />
+          {eco.stored && eco.stored.scheduleVersion !== eco.scheduleVersion && <div className="muted small">The margin saved on this product ({dollars(eco.stored.marginCents)}) was projected under fee schedule v{eco.stored.scheduleVersion}; the table above uses v{eco.scheduleVersion}. It is refreshed on the next price or cost change.</div>}
+        </>) : <div className="muted small">No base cost yet: create the print-provider product.</div>}
         <div className="muted small">The base cost is charged per unit when one sells, so it is not part of "cost" above.</div>
         {['idea', 'design_generated', 'mockup_ready', 'listing_drafted', 'PENDING_APPROVAL'].includes(st) && (
           <div className="row"><label className="grow">List price (USD)<input type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} /></label>

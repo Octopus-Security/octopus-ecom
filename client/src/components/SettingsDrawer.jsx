@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import StoresPanel from './StoresPanel.jsx';
 import BlocklistPanel from './BlocklistPanel.jsx';
 import PrintRulePanel from './PrintRulePanel.jsx';
+import { FeeSchedulePanel, PriceCalculator } from './FeesPanel.jsx';
 
 // Credentials: presence only. A value is typed in, sent once, and never shown again.
 export default function SettingsDrawer({ onClose, askConfirm }) {
@@ -30,6 +31,10 @@ export default function SettingsDrawer({ onClose, askConfirm }) {
       <StoresPanel askConfirm={askConfirm} />
       <h3>Print readiness</h3>
       <PrintRulePanel settings={s} onSaved={load} />
+      <h3>Etsy fees</h3>
+      <FeeSchedulePanel />
+      <h3>Price calculator</h3>
+      <PriceCalculator />
       <h3>Blocklist</h3>
       <BlocklistPanel />
       <h3>Credentials</h3>

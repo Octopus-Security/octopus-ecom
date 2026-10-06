@@ -37,7 +37,7 @@
  *    ledger entries (getShopPaymentAccountLedgerEntries) carry only amount and a free-text description. So: the
  *    processing fee is taken from the API when the call works, the transaction fee is COMPUTED from domain/fees.js,
  *    and every sale row says which in `fee_source`. Whether amount_fees can include more than the processing fee is
- *    not stated: assumed, unverified. Etsy's own fee pages could not be read (403), see domain/fees.js.
+ *    not stated: assumed, unverified. The rates (verified 2026-10-06 from Etsy's own fee page, via the owner) are the editable schedule in domain/fee-schedule.js.
  *  - VIEWS ARE exposed: Listing.views, "tabulated once per day and only for active listings, not real-time; 0 can mean
  *    not yet tabulated". Favourites: num_favorers. There is NO sales counter on a listing, so getListingStats returns
  *    sales: null and the performance watcher counts them from ingested sales instead.

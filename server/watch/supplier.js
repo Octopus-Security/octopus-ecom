@@ -10,7 +10,8 @@
  * pod_base_cost_cents, projected_margin_cents, alerts and snapshots. Observed cost = the
  * MAX variant cost (conservative: the margin we report is the worst case a buyer can choose).
  */
-const { projectMargin, marginFlags } = require('../domain/fees');
+const { projectMargin, marginFlags, snapshot } = require('../domain/fees');
+const { loadSchedule } = require('../domain/fee-schedule');
 
 const TERMINAL = ['rejected', 'failed', 'archived'];
 const usd = c => `$${(c / 100).toFixed(2)}`;
@@ -49,11 +50,11 @@ async function runSupplierWatch({ db, readers, alerts, state, settings, log }) {
         state.set(key, { costCents: observed, at: new Date().toISOString() });
 
         if (Number.isInteger(p.list_price_cents)) {
-          const m = projectMargin({ listPriceCents: p.list_price_cents, shippingCents: p.shipping_cents || 0, podBaseCostCents: observed });
+          const m = projectMargin({ listPriceCents: p.list_price_cents, shippingCents: p.shipping_cents || 0, podBaseCostCents: observed }, loadSchedule(settings));
           const newFlags = marginFlags(m.marginCents, floor).map(f => ({ ...f, source: 'watch' }));
           const kept = parseFlags(p).filter(f => !String(f.code).startsWith('margin_'));
-          db.prepare('UPDATE products SET pod_base_cost_cents = ?, projected_margin_cents = ?, flags = ? WHERE id = ?')
-            .run(observed, m.marginCents, JSON.stringify([...kept, ...newFlags]), p.id);
+          db.prepare('UPDATE products SET pod_base_cost_cents = ?, projected_margin_cents = ?, margin_breakdown = ?, flags = ? WHERE id = ?')
+            .run(observed, m.marginCents, snapshot(m), JSON.stringify([...kept, ...newFlags]), p.id);
           if (newFlags.length) {
             out.flagged++;
             alerts.raise({
