@@ -1,0 +1,52 @@
+# Portainer git stack. Pushing to main ships to production (estate rule).
+#
+# A stack variable reaches the container ONLY if it is listed under `environment:`
+# here, so every variable the app reads is listed. Every credential is optional:
+# without them the service runs in DRY_RUN with stubs, and credentials can be
+# entered sealed in the panel instead.
+services:
+  octopus-ecom:
+    build:
+      context: .
+      args:
+        NPM_TOKEN: ${NPM_TOKEN}
+    container_name: octopus-ecom
+    restart: unless-stopped
+    # Loopback only; the reverse proxy reaches it over the shared network.
+    ports:
+      - "127.0.0.1:3050:3050"
+    volumes:
+      - ecom_data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3050
+      - DATA_DIR=/app/data
+      - AUTH_MODE=sso
+      - OWNER_USERNAMES=${OWNER_USERNAMES}
+      - AUTH_SERVICE_URL=${AUTH_SERVICE_URL:-http://octopus-auth:3002}
+      - AUTH_PUBLIC_URL=${AUTH_PUBLIC_URL:-https://auth.octopustechnology.net}
+      # Second, subtractive access gate; must match the app's slug in the auth service.
+      - APP_ACCESS_SLUG=${APP_ACCESS_SLUG:-ecom}
+      # REQUIRED in production (>=16 chars): seals every stored credential.
+      - ECOM_SECRET=${ECOM_SECRET}
+      - DRY_RUN=${DRY_RUN:-true}
+      - DAILY_SPEND_CAP=${DAILY_SPEND_CAP:-5}
+      - MARGIN_FLOOR=${MARGIN_FLOOR:-2}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - PRINTIFY_API_TOKEN=${PRINTIFY_API_TOKEN:-}
+      - ETSY_API_KEY=${ETSY_API_KEY:-}
+      - ETSY_SHARED_SECRET=${ETSY_SHARED_SECRET:-}
+      - ETSY_REDIRECT_URI=${ETSY_REDIRECT_URI:-}
+      - LLM_PROVIDER=${LLM_PROVIDER:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - ROUTER_PATH=${ROUTER_PATH:-}
+    networks:
+      - octopus_network
+
+volumes:
+  ecom_data:
+
+networks:
+  octopus_network:
+    external: true

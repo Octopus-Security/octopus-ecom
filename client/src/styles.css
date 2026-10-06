@@ -1,0 +1,42 @@
+:root {
+  --bg: #12151a; --panel: #1b2027; --line: #2b323c; --text: #e6e9ee; --muted: #8b95a3;
+  --accent: #4aa3ff; --pos: #4cc38a; --neg: #ef6b6b; --warn: #e5a93d;
+}
+@media (prefers-color-scheme: light) {
+  :root { --bg: #f4f6f8; --panel: #ffffff; --line: #d8dee6; --text: #1c2229; --muted: #5d6877; --accent: #1b6fd1; --pos: #1d8a56; --neg: #c93c3c; --warn: #a8700a; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 system-ui, sans-serif; }
+.topbar { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+.brand { font-size: 1.1rem; }
+.stat { display: flex; flex-direction: column; min-width: 70px; font-variant-numeric: tabular-nums; }
+.stat .label { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; }
+.stat.pos span:last-child { color: var(--pos); } .stat.neg span:last-child { color: var(--neg); }
+.cap { min-width: 160px; }
+.meter { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin-top: 4px; }
+.meter div { height: 100%; background: var(--accent); } .meter.full div { background: var(--neg); }
+button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.ghost { background: transparent; color: var(--text); border-color: var(--line); }
+button.danger { background: var(--neg); border-color: var(--neg); }
+button.dry { font-weight: 700; letter-spacing: .03em; }
+button.dry.on { background: var(--pos); border-color: var(--pos); } button.dry.off { background: var(--neg); border-color: var(--neg); }
+input { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); flex: 1; min-width: 0; }
+.board { display: flex; gap: 12px; padding: 16px; overflow-x: auto; align-items: flex-start; }
+.col { flex: 0 0 220px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; min-height: 120px; }
+.col h3 { margin: 4px 4px 8px; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); display: flex; justify-content: space-between; }
+.count { background: var(--line); border-radius: 10px; padding: 0 7px; }
+.stage-PENDING_APPROVAL h3 { color: var(--warn); } .stage-failed h3 { color: var(--neg); }
+.empty { color: var(--muted); font-size: .8rem; text-align: center; padding: 18px 0; }
+.card { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin-bottom: 8px; }
+.card img { width: 100%; border-radius: 4px; } .card h4 { margin: 6px 0 2px; font-size: .9rem; }
+.flag { display: inline-block; margin: 4px 4px 0 0; padding: 0 6px; border-radius: 4px; background: var(--warn); color: #000; font-size: .72rem; }
+.muted { color: var(--muted); } .small { font-size: .78rem; } .pos { color: var(--pos); } .neg { color: var(--neg); }
+.banner.error { background: color-mix(in srgb, var(--neg) 18%, transparent); border: 1px solid var(--neg); padding: 8px 12px; margin: 8px 16px; border-radius: 6px; }
+.row { display: flex; gap: 8px; align-items: center; } .row.between { justify-content: space-between; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100%); background: var(--panel); border-left: 1px solid var(--line); padding: 16px; overflow-y: auto; z-index: 10; }
+.cred { border-top: 1px solid var(--line); padding: 10px 0; display: grid; gap: 6px; }
+.modal-back { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: grid; place-items: center; z-index: 20; padding: 16px; }
+.modal { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; width: min(480px, 100%); display: grid; gap: 12px; }
+.modal .row { justify-content: flex-end; }
+@media (max-width: 640px) { .col { flex-basis: 78vw; } .topbar { gap: 8px 14px; } }
