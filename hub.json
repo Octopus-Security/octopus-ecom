@@ -1,1 +1,7 @@
-{ "name": "Shop", "subdomain": "ecom", "domain": "octopustechnology.net" }
+{
+  "name": "Shop",
+  "subdomain": "ecom",
+  "domain": "octopustechnology.net",
+  "icon": "🏪",
+  "access": "private"
+}
