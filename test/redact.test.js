@@ -10,7 +10,7 @@ test('known token shapes are redacted', () => {
   const samples = [
     'ghp_' + 'a'.repeat(36), 'sk-ant-' + 'b'.repeat(30), 'sk-proj-' + 'c'.repeat(40), 'sk-' + 'd'.repeat(40),
     'AKIA' + 'E'.repeat(16), 'Bearer abcdefghijklmnop12345', 'eyJhbGciOiJI.eyJzdWIiOiIxMjM0.SflKxwRJSMeKKF2QT4fw',
-    'xoxb-1234567890-abcdef',
+    'xoxb-' + '1234567890-abcdef',
   ];
   for (const s of samples) {
     const out = redactText(`before ${s} after`);
