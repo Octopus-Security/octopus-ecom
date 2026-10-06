@@ -93,3 +93,15 @@ test('sso owner gate: signed-out 401, non-owner 403, owner passes (injected iden
     assert.equal(res.status, status, JSON.stringify(user));
   }
 });
+
+test('/api/build reports the gate slug only when the gate is enforcing', async () => {
+  const { buildAuth } = require('../server/auth');
+  const build = async (cfg) => {
+    const auth = buildAuth(cfg, { ssoFactory: () => (_q, _s, n) => n(), log: { warn() {} } });
+    const s = await new Promise((r) => { const x = buildApp({ ...d, auth }).listen(0, '127.0.0.1', () => r(x)); });
+    try { return (await (await fetch(`http://127.0.0.1:${s.address().port}/api/build`)).json()).gate; } finally { s.close(); }
+  };
+  assert.equal(await build({ ...d.cfg, authMode: 'sso', owners: ['boss'], appAccessSlug: 'ecom' }), 'ecom');
+  assert.equal(await build({ ...d.cfg, authMode: 'sso', owners: ['boss'], appAccessSlug: '' }), null);
+  assert.equal(await build({ ...d.cfg, authMode: 'dev', appAccessSlug: 'ecom' }), null);
+});

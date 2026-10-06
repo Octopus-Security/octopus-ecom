@@ -24,7 +24,7 @@ function buildApp(deps) {
 
   // Unauthenticated probes. Nothing here reveals data.
   app.get('/healthz', (_req, res) => res.json({ ok: true }));
-  app.get('/api/build', (_req, res) => res.json({ ok: true, service: 'octopus-ecom', build: BUILD, startedAt: STARTED_AT }));
+  app.get('/api/build', (_req, res) => res.json({ ok: true, service: 'octopus-ecom', build: BUILD, startedAt: STARTED_AT, gate: deps.auth.gateSlug || null }));
 
   app.use(express.json({ limit: '1mb' }));
   app.use(deps.auth.identify);

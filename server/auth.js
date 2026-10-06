@@ -74,7 +74,11 @@ function buildAuth(cfg, { ssoFactory, loadAuthClient, fetchImpl, log = console }
     return next();
   }
 
-  return { identify, requireOwner: wrap(requireOwner) };
+  // What /api/build reports as `gate`: the slug requireOwner actually checks
+  // (null when none is set, or in dev mode, which skips every gate).
+  const gateSlug = cfg.authMode === 'dev' ? null : (cfg.appAccessSlug || null);
+
+  return { identify, requireOwner: wrap(requireOwner), gateSlug };
 }
 
 /** Same-origin check for state-changing requests (CSRF defence independent of cookie flags). */
