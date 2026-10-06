@@ -1,0 +1,16 @@
+.alerts-tray { position: relative; display: inline-block; }
+.alerts-tray .bell { position: relative; }
+.alerts-tray .badge { margin-left: 6px; min-width: 20px; padding: 0 6px; border-radius: 10px; background: var(--line); color: var(--text); font-size: .75rem; }
+.alerts-tray .badge.has { background: var(--warn); color: #000; }
+.alerts-tray .badge.crit { background: var(--neg); color: #fff; }
+.alerts-pop { position: absolute; right: 0; top: calc(100% + 6px); width: min(420px, 92vw); max-height: 70vh; overflow-y: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; z-index: 30; }
+.alert-item { border-top: 1px solid var(--line); padding: 8px 4px; display: grid; gap: 4px; }
+.alert-item:first-of-type { border-top: 0; }
+.alert-item.critical { border-left: 3px solid var(--neg); padding-left: 8px; }
+.alert-item.warn { border-left: 3px solid var(--warn); padding-left: 8px; }
+.alert-item .meta { color: var(--muted); font-size: .75rem; }
+.watch-panel { padding: 16px; display: grid; gap: 16px; max-width: 760px; }
+.watch-panel table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.watch-panel th, .watch-panel td { text-align: left; padding: 4px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+.watch-panel .form { display: flex; flex-wrap: wrap; gap: 8px; }
+.watch-panel select, .watch-panel textarea { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }

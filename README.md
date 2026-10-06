@@ -25,6 +25,8 @@ for every optional setting.
 npm test     # node:test, no network, no keys
 ```
 
+Operator playbooks (checklists for margin drops, stock-outs, etc.) live in `docs/playbooks/`; they are generated from `server/playbooks/definitions.js`.
+
 ## Status
 
 Milestone M1: everything from M0 plus the **New product** composer (brief, niche,

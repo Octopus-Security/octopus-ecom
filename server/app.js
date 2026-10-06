@@ -6,6 +6,8 @@ const path = require('node:path');
 const { sameOrigin } = require('./auth');
 const { BUILD, STARTED_AT } = require('./build');
 const { router, errorHandler } = require('./routes/api');
+const { createWatchRouter } = require('./watch');
+const { createPlaybookRouter } = require('./playbooks');
 
 const DIST = path.join(__dirname, '..', 'client', 'dist');
 
@@ -27,6 +29,9 @@ function buildApp(deps) {
   app.use(deps.auth.requireOwner);
   app.use(sameOrigin);
 
+  // Before the /api router, whose catch-all 404 would swallow these. Same owner auth + sameOrigin as above.
+  app.use('/api/watch', createWatchRouter(deps, { service: deps.watch }));
+  app.use('/api/playbooks', createPlaybookRouter(deps));
   app.use('/api', router(deps));
 
   if (fs.existsSync(path.join(DIST, 'index.html'))) {

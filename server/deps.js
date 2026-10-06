@@ -18,6 +18,7 @@ const { makeHttp } = require('./adapters/http');
 
 const { makeLlm } = require('./llm');
 const { makePipeline } = require('./pipeline');
+const { makeWatchService } = require('./watch');
 
 function createDeps(cfg, { secret, env = process.env, dbFile, out, authOptions, http, requireFn, now, upscale } = {}) {
   const db = openDb(dbFile || path.join(cfg.dataDir, 'ecom.db'));
@@ -37,7 +38,8 @@ function createDeps(cfg, { secret, env = process.env, dbFile, out, authOptions, 
   const llm = makeLlm({ cfg, credentials, http, spend, log, env, requireFn });
   const adapters = buildAdapters({ cfg, credentials, keystore, isDryRun: dryRun.isOn, log, llm, http, spend, upscale });
   const pipeline = makePipeline({ db, stages, adapters, spend, log });
-  return { pipeline, http, cfg, db, keystore, credentials, redactor, log, settings, confirm, dryRun, spend, stages, auth, llm, adapters };
+  const watch = makeWatchService({ db, settings, adapters, log, env });
+  return { watch, pipeline, http, cfg, db, keystore, credentials, redactor, log, settings, confirm, dryRun, spend, stages, auth, llm, adapters };
 }
 
 module.exports = { createDeps };

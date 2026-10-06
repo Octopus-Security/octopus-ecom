@@ -8,7 +8,7 @@ function createPrintful(/* { http, credentials, log } */) {
   const ni = n => async () => { throw new NotImplemented(`pod.printful.${n}`); };
   return {
     implemented: false,
-    listBlueprints: ni('listBlueprints'), listPrintProviders: ni('listPrintProviders'), getVariantCosts: ni('getVariantCosts'),
+    listBlueprints: ni('listBlueprints'), listPrintProviders: ni('listPrintProviders'), getVariantCosts: ni('getVariantCosts'), getAvailability: ni('getAvailability'),
     createProduct: ni('createProduct'), getMockups: ni('getMockups'), publish: ni('publish'),
   };
 }

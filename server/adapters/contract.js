@@ -9,8 +9,8 @@
  */
 const CONTRACTS = {
   imagegen:    { generate: 'spend' },
-  pod:         { listBlueprints: 'read', listPrintProviders: 'read', getVariantCosts: 'read', createProduct: 'write', getMockups: 'read', publish: 'write' },
-  storefront:  { getShop: 'read', buildAuthUrl: 'read', exchangeCode: 'read', refreshToken: 'read', getListing: 'read', createListing: 'write', updateListing: 'write', getReceipts: 'read' },
+  pod:         { listBlueprints: 'read', listPrintProviders: 'read', getVariantCosts: 'read', getAvailability: 'read', createProduct: 'write', getMockups: 'read', publish: 'write' },
+  storefront:  { getShop: 'read', buildAuthUrl: 'read', exchangeCode: 'read', refreshToken: 'read', getListing: 'read', createListing: 'write', updateListing: 'write', getReceipts: 'read', getListingStats: 'read' },
   trend:       { suggest: 'read' },
   listingcopy: { generate: 'spend' },
 };

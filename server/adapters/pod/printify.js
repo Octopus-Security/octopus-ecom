@@ -9,7 +9,7 @@ function createPrintify(/* { http, credentials, log } */) {
   const ni = n => async () => { throw new NotImplemented(`pod.printify.${n} (M2)`); };
   return {
     implemented: false,
-    listBlueprints: ni('listBlueprints'), listPrintProviders: ni('listPrintProviders'), getVariantCosts: ni('getVariantCosts'),
+    listBlueprints: ni('listBlueprints'), listPrintProviders: ni('listPrintProviders'), getVariantCosts: ni('getVariantCosts'), getAvailability: ni('getAvailability'),
     createProduct: ni('createProduct'), getMockups: ni('getMockups'), publish: ni('publish'),
   };
 }

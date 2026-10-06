@@ -1,0 +1,12 @@
+.playbooks { padding: 16px; display: grid; grid-template-columns: minmax(180px, 260px) 1fr; gap: 16px; align-items: start; }
+.playbooks nav { display: grid; gap: 6px; }
+.playbooks nav button { text-align: left; background: var(--panel); color: var(--text); border-color: var(--line); }
+.playbooks nav button.active { border-color: var(--accent); }
+.playbooks .detail { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; min-width: 0; }
+.playbooks .background { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); font-size: .85rem; }
+.playbooks ol { list-style: none; padding: 0; margin: 12px 0 0; display: grid; gap: 8px; }
+.playbooks li { display: grid; grid-template-columns: auto 1fr; gap: 8px; align-items: start; border-top: 1px solid var(--line); padding-top: 8px; }
+.playbooks li input[type=checkbox] { flex: none; min-width: 0; width: 18px; height: 18px; margin-top: 2px; }
+.check { display: inline-block; margin-top: 2px; padding: 0 6px; border-radius: 4px; font-size: .72rem; }
+.check.pass { background: var(--pos); color: #000; } .check.fail { background: var(--neg); color: #fff; } .check.unknown { background: var(--line); color: var(--text); }
+@media (max-width: 640px) { .playbooks { grid-template-columns: 1fr; } }

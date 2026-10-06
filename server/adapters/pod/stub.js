@@ -14,6 +14,13 @@ function createStub() {
     async getVariantCosts(blueprintId /*, providerId */) {
       return { currency: 'USD', variants: [{ id: `${blueprintId}-m`, title: 'M', costCents: blueprintId === 'stub-mug' ? 650 : 1250 }] };
     },
+    // READ (watchers). Added for the product-watch feature; NOT yet in adapters/contract.js CONTRACTS, so
+    // routed adapters do not expose it until the contract gains `getAvailability: 'read'`.
+    // TODO(M2, real Printify adapter): implement getAvailability(blueprintId, providerId) in pod/printify.js
+    // as {variants:[{id,title,inStock}]} from the provider's variant listing (source unverified).
+    async getAvailability(blueprintId /*, providerId */) {
+      return { variants: [{ id: `${blueprintId}-m`, title: 'M', inStock: true }] };
+    },
     async createProduct({ blueprintId, providerId, title }) {
       const externalId = `stub-prod-${++seq}`;
       products.set(externalId, { externalId, blueprintId, providerId, title, published: false });

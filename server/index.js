@@ -9,6 +9,7 @@ const { resolveSecret } = require('./secret');
 const { createDeps } = require('./deps');
 const { buildApp } = require('./app');
 const { patchConsole } = require('./log');
+const { startWatchers } = require('./watch');
 
 /** Build everything or throw. Used by main() and by tests that want a live server. */
 function assemble(env = process.env, opts = {}) {
@@ -32,6 +33,17 @@ function main(env = process.env) {
     const addr = server.address();
     console.log(`[ecom] listening on http://${addr.address}:${addr.port}  auth=${cfg.authMode}  DRY_RUN=${deps.dryRun.isOn() ? 'ON' : 'OFF'}`);
   });
+  const stopWatchers = startWatchers(deps, { service: deps.watch });
+  let closing = false;
+  const shutdown = (sig) => {
+    if (closing) return; closing = true;
+    console.log(`[ecom] ${sig}: stopping`);
+    stopWatchers();
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 5000).unref();
+  };
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
+  process.once('SIGINT', () => shutdown('SIGINT'));
   server.on('error', (err) => { console.error(`[ecom] cannot listen: ${err.message}`); process.exit(75); });
   return server;
 }

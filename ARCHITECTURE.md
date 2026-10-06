@@ -18,6 +18,8 @@ server/
   llm/            complete() + stub / openai / openai-compatible + router-path.js
   adapters/       http.js, contract.js, route.js, <kind>/{index,stub,<real>}.js
   routes/api.js   REST API
+  watch/          schedulers, watchers, alerts (supplier, performance, keywords)
+  playbooks/      runbooks as data + check hooks
 ```
 
 ## Isolation
@@ -176,8 +178,35 @@ SQLite via `node:sqlite`. Spec tables: `stores`, `products`, `designs`, `mockups
 `blocklist`. Migrations are additive only. `events.product_id` is NULL for system
 events (`kind = 'system'`); `kind = 'note'` events belong to a product but are not stage changes. Confirm tokens are in memory (a restart invalidates them).
 
+## Watchers and playbooks
+
+`server/watch/` is read-only monitoring, mounted at `/api/watch` (behind the same owner auth and
+`sameOrigin` as the rest, and before the `/api` router's catch-all 404).
+
+- Three watchers: supplier (POD base cost and variant availability), performance (views/favourites/sales
+  of OUR listings) and keywords (operator-supplied trend signals).
+- The supplier watcher may add/clear `margin_*` flags and update `pod_base_cost_cents` /
+  `projected_margin_cents` on non-terminal products, recomputing with `domain/fees.js`
+  `projectMargin`/`marginFlags` and the `margin_floor_cents` setting. It never writes `stage` (only
+  `domain/stages.js` does) and never makes an external write.
+- Alerts are deduplicated per key while unacknowledged. Every run is a `watch_runs` row; a watcher error is
+  recorded, not thrown. Each run summary says `[source: stub]` or `[source: adapter]`.
+- The scheduler is in-process, jittered, unref'd, and started only from `index.js` `main()` (never on
+  `require`, and off under `NODE_ENV=test`); SIGTERM/SIGINT stop it and close the server.
+  `WATCH_INTERVAL_MINUTES` (default 360, min 1); tuning `WATCH_ZERO_SALES_VIEWS`, `WATCH_VIEW_DROP_PCT`,
+  `WATCH_VIEW_DROP_MIN_PREV`.
+- Tables: `watchlist`, `watch_runs`, `alerts`, `watch_state`, `playbook_ticks`.
+- Read methods `pod.getAvailability` and `storefront.getListingStats` are in the adapter contract as `read`.
+  `route.js` falls back to the stub for a read method the real adapter lacks (and for scaffolds), so a
+  partial real adapter never throws on a watcher read.
+- Guardrail: no competitor listing titles, images or shop data are fetched or stored (`TrendSource` signals
+  are validated to `{message, severity}` only). Proposal, NOT built, needs an Etsy API ToS check: an
+  aggregate result count per keyword.
+- `docs/playbooks/*.md` are rendered from `server/playbooks/definitions.js`
+  (`node server/playbooks/render-md.js`); a test fails if they drift.
+
 ## Not yet built
 
-Printify (M2), Etsy OAuth, publish path and
+Printify (M2; must implement `getAvailability`, and `getVariantCosts` returning `{variants:[{id,title,costCents}]}`), Etsy OAuth (M3; must implement `getListingStats(externalId) -> {views, favorites, sales}`, endpoint/scope assumed, unverified), publish path and
 receipt ingest (M3), batch orchestrator, print-readiness enforcement and
 `docs/COMPLIANCE.md` (M4).

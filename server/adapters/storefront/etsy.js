@@ -10,7 +10,7 @@ function createEtsy(/* { http, credentials, keystore, log } */) {
   return {
     implemented: false,
     getShop: ni('getShop'), buildAuthUrl: ni('buildAuthUrl'), exchangeCode: ni('exchangeCode'), refreshToken: ni('refreshToken'),
-    getListing: ni('getListing'), createListing: ni('createListing'), updateListing: ni('updateListing'), getReceipts: ni('getReceipts'),
+    getListing: ni('getListing'), createListing: ni('createListing'), updateListing: ni('updateListing'), getReceipts: ni('getReceipts'), getListingStats: ni('getListingStats'),
   };
 }
 module.exports = { createEtsy };

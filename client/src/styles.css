@@ -49,3 +49,6 @@ textarea { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px soli
 .counter { float: right; font-variant-numeric: tabular-nums; } .warn { color: var(--warn); }
 .tags { display: flex; flex-wrap: wrap; gap: 4px; } .tag { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; font-size: .78rem; } .tag.bad { border-color: var(--neg); color: var(--neg); }
 .drawer h4 { margin: 8px 0 4px; } .drawer ul { margin: 0; padding-left: 18px; }
+
+.views { display: flex; gap: 4px; }
+.views .active { border-color: var(--accent, currentColor); font-weight: 600; }
