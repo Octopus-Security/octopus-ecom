@@ -152,6 +152,8 @@ function router(deps) {
   require('./channels').mount(r, deps);
   // M4: blocklist editor, batch orchestrator.
   require('./m4').mount(r, deps);
+  // Proposals queue: generated original product ideas awaiting the owner.
+  require('./proposals').mount(r, deps);
 
   r.get('/mockups/:id/file', wrap(async (req, res) => {
     const m = db.prepare('SELECT file FROM mockups WHERE id = ?').get(Number(req.params.id));

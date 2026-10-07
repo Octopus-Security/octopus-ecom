@@ -228,6 +228,40 @@ function migrate(db) {
   db.exec(`CREATE TABLE IF NOT EXISTS oauth_pending (
     state TEXT PRIMARY KEY, verifier_sealed TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL
   )`);
+  // Proposals: original product ideas waiting for the owner (server/proposals/). Additive only; a rerun is a no-op.
+  db.exec(`CREATE TABLE IF NOT EXISTS proposal_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    trigger TEXT NOT NULL DEFAULT 'manual',   -- manual | digest | weekly
+    requested INTEGER NOT NULL, produced INTEGER NOT NULL DEFAULT 0,
+    source TEXT, model TEXT, tier TEXT,       -- llm | template | llm+template
+    cost_cents INTEGER NOT NULL DEFAULT 0,    -- the model call's cost (0 through cortex, which bills the account itself)
+    dropped_blocklist INTEGER NOT NULL DEFAULT 0, dropped_duplicate INTEGER NOT NULL DEFAULT 0, dropped_other INTEGER NOT NULL DEFAULT 0,
+    notes TEXT NOT NULL DEFAULT '[]', seeds TEXT NOT NULL DEFAULT '{}', filters TEXT NOT NULL DEFAULT '{}',
+    et_day TEXT NOT NULL, created_at TEXT NOT NULL
+  )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS proposals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    status TEXT NOT NULL DEFAULT 'pending',   -- pending | approved | rejected | snoozed (checked in code, so a later status needs no table rebuild)
+    run_id INTEGER REFERENCES proposal_runs(id),
+    source TEXT NOT NULL DEFAULT 'template', model TEXT,
+    concept TEXT NOT NULL DEFAULT '', rationale TEXT NOT NULL DEFAULT '', theme TEXT NOT NULL DEFAULT '',
+    keywords TEXT NOT NULL DEFAULT '[]',
+    signals TEXT NOT NULL DEFAULT '[]',       -- JSON: the seeds / watchlist terms / trend signals this came from
+    product_type TEXT NOT NULL DEFAULT 'tshirt',
+    blueprint TEXT, print_provider_id TEXT, blueprint_note TEXT, print_area TEXT,
+    brief TEXT NOT NULL DEFAULT '',
+    image_prompt TEXT NOT NULL DEFAULT '', prompt_edited INTEGER NOT NULL DEFAULT 0,
+    etsy_title TEXT NOT NULL DEFAULT '', etsy_tags TEXT NOT NULL DEFAULT '[]', etsy_description TEXT NOT NULL DEFAULT '',
+    rb_title TEXT NOT NULL DEFAULT '', rb_tags TEXT NOT NULL DEFAULT '[]', rb_description TEXT NOT NULL DEFAULT '', rb_edited INTEGER NOT NULL DEFAULT 0,
+    price_cents INTEGER, base_cost_cents INTEGER, base_cost_source TEXT,   -- an ESTIMATE, never a Printify price
+    margin_cents INTEGER, margin_pct REAL, margin_breakdown TEXT,
+    season TEXT, season_window TEXT, too_late INTEGER NOT NULL DEFAULT 0,
+    lint TEXT NOT NULL DEFAULT '{}', risk TEXT NOT NULL DEFAULT '{}', risk_level TEXT NOT NULL DEFAULT 'clear', model_check TEXT,
+    reject_reason TEXT, snooze_until TEXT,
+    product_id INTEGER REFERENCES products(id),
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL, decided_at TEXT
+  )`);
+  db.exec('CREATE INDEX IF NOT EXISTS proposals_status ON proposals(status, id)');
 }
 
 function openDb(file) {
