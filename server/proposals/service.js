@@ -319,8 +319,8 @@ function makeProposals({ db, settings, spend, llm, adapters, pipeline, confirm, 
     const themeSeeds = [...seeds.themes];
     for (const o of seeds.occasions) { const ids = seasons.matchOccasion(o); if (ids.length) ids.forEach(i => { if (!seasonIds.includes(i)) seasonIds.push(i); }); else { themeSeeds.push(o); notes.push(`"${o}" is not a holiday this tool knows: used as a theme`); } }
     const windows = seasons.upcoming(day, lead, 200);
-    const windowById = Object.fromEntries(seasons.HOLIDAYS.map(h => [h.id, seasons.windowFor(h.id, day, lead)]));
-    for (const id of seasonIds) if (windowById[id].tooLate) notes.push(`${windowById[id].summary}`);
+    const windowById = Object.fromEntries(seasons.HOLIDAYS.map(h => [h.id, seasons.windowFor(h.id, day, lead)]).filter(([, w]) => w)); // a holiday with no known date this year is left out
+    for (const id of seasonIds) if (windowById[id] && windowById[id].tooLate) notes.push(`${windowById[id].summary}`);
     const seasonalPool = windows.filter(w => w.status !== 'too_late' && w.daysToHoliday <= 120).map(w => w.holiday).slice(0, 3);
 
     const sig = await collectSignals({ ...seeds, themes: themeSeeds }, { liveSignals });

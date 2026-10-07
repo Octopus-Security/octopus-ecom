@@ -56,7 +56,7 @@ const easter = TD.easter;
 const EVENT_OF = Object.freeze({
   'new-year': 'new-years', valentines: 'valentines-day', 'st-patricks': 'st-patricks-day', easter: 'easter', 'mothers-day': 'mothers-day',
   graduation: 'graduation', 'fathers-day': 'fathers-day', 'independence-day': 'independence-day', 'back-to-school': 'back-to-school',
-  halloween: 'halloween', thanksgiving: 'thanksgiving', christmas: 'christmas',
+  halloween: 'halloween', thanksgiving: 'thanksgiving', hanukkah: 'hanukkah', christmas: 'christmas',
 });
 const peakOf = (id) => {
   const ev = EVENTS.find(e => e.id === EVENT_OF[id]);
@@ -77,6 +77,8 @@ const HOLIDAYS = Object.freeze([
   { id: 'back-to-school', name: 'Back to school', aliases: ['back to school'], rule: peakOf('back-to-school'), approx: true },
   { id: 'halloween', name: 'Halloween', aliases: ['halloween', 'spooky season'], rule: peakOf('halloween') },
   { id: 'thanksgiving', name: 'Thanksgiving', aliases: ['thanksgiving', 'friendsgiving'], rule: peakOf('thanksgiving') },
+  // Hanukkah is a TABLE in the trends module (no Gregorian rule): rule(y) is null for a year it does not list, and such a year is skipped.
+  { id: 'hanukkah', name: 'Hanukkah', aliases: ['hanukkah', 'chanukah', 'hannukah', 'menorah', 'dreidel'], rule: peakOf('hanukkah') },
   { id: 'christmas', name: 'Christmas', aliases: ['christmas', 'xmas', 'holiday', 'holidays', 'festive'], rule: peakOf('christmas') },
 ]);
 const byHoliday = (id) => HOLIDAYS.find(h => h.id === id) || null;
@@ -93,11 +95,14 @@ function resolveLead(input) {
   return out;
 }
 
-/** The next occurrence of a holiday on or after `today` (an ET date). */
+/** The next occurrence of a holiday on or after `today` (an ET date), or null when no year in reach has a date (a table holiday past its table). */
 function nextOccurrence(holiday, today) {
   const y = Number(today.slice(0, 4));
-  const thisYear = holiday.rule(y);
-  return diffDays(thisYear, today) >= 0 ? thisYear : holiday.rule(y + 1);
+  for (let k = 0; k <= 3; k++) {
+    const d = holiday.rule(y + k);
+    if (d && diffDays(d, today) >= 0) return d;
+  }
+  return null;
 }
 
 /**
@@ -120,21 +125,23 @@ function windowFor(holidayId, today, lead = DEFAULT_LEAD) {
       status: toLast < 0 ? 'too_late' : toList < 0 ? 'tight' : 'open', approx: !!h.approx,
     };
   };
-  const w = build(nextOccurrence(h, today));
+  const nextDate = nextOccurrence(h, today);
+  if (!nextDate) return null; // no date known for this holiday: skipped, never a null date
+  const w = build(nextDate);
   const out = { ...w, tooLate: w.status === 'too_late', lead: L, leadStatus: LEAD_STATUS };
   if (out.tooLate) {
-    const n = build(h.rule(Number(w.date.slice(0, 4)) + 1));
-    out.next = { date: n.date, lastOrder: n.lastOrder, listBy: n.listBy, status: n.status };
+    const nd = nextOccurrence(h, addDays(w.date, 1));
+    if (nd) { const n = build(nd); out.next = { date: n.date, lastOrder: n.lastOrder, listBy: n.listBy, status: n.status }; }
   }
   out.summary = out.tooLate
-    ? `${h.name} ${w.date}: TOO LATE this year (last realistic order date ${w.lastOrder} has passed); next chance ${out.next.date}, list by ${out.next.listBy}`
+    ? `${h.name} ${w.date}: TOO LATE this year (last realistic order date ${w.lastOrder} has passed); ${out.next ? `next chance ${out.next.date}, list by ${out.next.listBy}` : 'no later date is known'}`
     : `${h.name} ${w.date}: ${w.status === 'tight' ? 'TIGHT, list now' : `list by ${w.listBy}`}; last realistic order date ${w.lastOrder} (${w.daysToLastOrder} days)`;
   return out;
 }
 
 /** Every holiday within `horizonDays` of today, nearest first, each with its window (including ones already too late this year). */
 function upcoming(today, lead = DEFAULT_LEAD, horizonDays = 200) {
-  return HOLIDAYS.map(h => windowFor(h.id, today, lead)).filter(w => w.daysToHoliday <= horizonDays).sort((a, b) => a.daysToHoliday - b.daysToHoliday);
+  return HOLIDAYS.map(h => windowFor(h.id, today, lead)).filter(w => w && w.daysToHoliday <= horizonDays).sort((a, b) => a.daysToHoliday - b.daysToHoliday);
 }
 
 const plain = (s) => String(s || '').toLowerCase().replace(/[’']/g, '').replace(/[^a-z0-9]+/g, ' ').trim();

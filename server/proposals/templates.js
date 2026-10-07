@@ -7,6 +7,7 @@
  * reads a listing or an image.
  */
 const { typeOf, TYPE_IDS } = require('./catalog');
+const seasons = require('../domain/seasons');
 const { clean, sigWords, jaccard, mulberry32, hash, titleCase } = require('./util');
 
 // Used only when the owner gave no seeds and no signal produced a theme.
@@ -38,16 +39,24 @@ function templateProposals({ count, subjects = [], audiences = [], types = TYPE_
     const comp = COMPOSITIONS[(sOff + i * 3 + 1) % COMPOSITIONS.length];
     const palette = PALETTES[(sOff + i * 2) % PALETTES.length];
     const audience = audiences.length ? audiences[i % audiences.length] : null;
-    const seasonId = seasonIds.length ? seasonIds[i % seasonIds.length] : (seasonalPool.length && i % 3 === 0 ? seasonalPool[Math.floor(i / 3) % seasonalPool.length] : null);
-    const win = seasonId ? windows[seasonId] : null;
     const subject = clean(sub.term, 60);
+    // An occasion the owner asked for always applies. A season picked from the pool is attached only when the theme matches it
+    // (a Hanukkah theme gets Hanukkah, never Halloween), or when no theme was given at all (the evergreen filler).
+    let seasonId = null;
+    if (seasonIds.length) seasonId = seasonIds[i % seasonIds.length];
+    else if (seasonalPool.length && i % 3 === 0) {
+      const pick = seasonalPool[Math.floor(i / 3) % seasonalPool.length];
+      if (sub.source === 'evergreen' || seasons.matchOccasion(subject).includes(pick)) seasonId = pick;
+    }
+    const win = seasonId && windows[seasonId] ? windows[seasonId] : null;
+    if (!win) seasonId = null;
 
     const concept = `${comp[0].toUpperCase()}${comp.slice(1)} celebrating ${subject}, drawn in a ${style} style${audience ? `, made for ${audience}` : ''}${win ? `, timed for ${win.name}` : ''}.`;
     const sw = sigWords(concept);
     if (sigs.some(s => jaccard(s, sw) >= 0.6)) continue;
     sigs.push(sw);
 
-    const brief = `${concept} Palette: ${palette}. One clear focal subject, clean edges, no text, no lettering, no logos.`;
+    const brief = `${concept} Palette: ${palette}. One clear focal subject, clean edges, no text, no lettering, no logos.${seasonId === 'hanukkah' ? ' Keep any religious symbol simple and on its own (a menorah or a dreidel, never overlapping symbols), and treat it respectfully.' : ''}`;
     const suffix = audience ? `Gift for ${titleCase(audience)}` : win ? `${win.name} Gift` : 'Gift Idea';
     const title = `${titleCase(subject)} ${styleShort} ${type.noun} ${suffix}`.replace(/\s+/g, ' ').slice(0, 140).trim();
     const tags = [subject, `${subject} gift`, `${subject} lover`, `${subject} ${type.noun.toLowerCase()}`, styleShort.toLowerCase(), `${type.noun.toLowerCase()} gift`,

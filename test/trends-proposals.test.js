@@ -86,3 +86,55 @@ test('proposals seasons take their dates from the trends table (one source of tr
   assert.equal(seasons.addDays('2026-02-27', 2), '2026-03-01'); assert.equal(seasons.diffDays('2026-03-01', '2026-02-27'), 2);
   assert.throws(() => seasons.addDays('2026-02-30', 1), /bad date/);
 });
+
+// ---- Hanukkah in proposals' season list ---------------------------------------------------------------------------------------
+const { HANUKKAH_FIRST_DAY } = require('../server/trends/season-table');
+const { templateProposals } = require('../server/proposals/templates');
+
+test('Hanukkah is a proposals season; its date is the trends table value, and a year with no entry is skipped', () => {
+  const h = seasons.byHoliday('hanukkah'); assert.ok(h);
+  assert.equal(h.rule(2026), HANUKKAH_FIRST_DAY[2026]); assert.equal(h.rule(2027), HANUKKAH_FIRST_DAY[2027]);
+  const w = seasons.windowFor('hanukkah', '2026-10-06');
+  assert.equal(w.date, HANUKKAH_FIRST_DAY[2026]); assert.equal(w.lastOrder, seasons.addDays(HANUKKAH_FIRST_DAY[2026], -18)); assert.equal(w.listBy, seasons.addDays(w.lastOrder, -21)); assert.equal(w.status, 'open');
+  assert.equal(h.rule(2040), null, 'the table has no 2040');
+  assert.equal(seasons.windowFor('hanukkah', '2040-06-01'), null, 'no date: no window, never a null date');
+  assert.ok(seasons.upcoming('2040-06-01', undefined, 400).every(x => x.date && x.holiday !== 'hanukkah'));
+  assert.equal(seasons.windowFor('christmas', '2040-06-01').date, '2040-12-25');
+  // too late this year, next year known
+  const late = seasons.windowFor('hanukkah', '2026-12-04'); assert.equal(late.tooLate, true); assert.equal(late.next.date, HANUKKAH_FIRST_DAY[2027]);
+  assert.deepEqual(seasons.matchOccasion('Chanukah gifts'), ['hanukkah']);
+});
+
+test('Hanukkah appears in /api/proposals/config seasons and a Hanukkah-seeded generation is tagged with it', async () => {
+  const { d } = setup();
+  const server = await new Promise((r) => { const s = buildApp(d).listen(0, '127.0.0.1', () => r(s)); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const cfg = await (await fetch(`${base}/api/proposals/config`)).json();
+    const hk = cfg.seasons.find(s => s.holiday === 'hanukkah'); assert.ok(hk, 'listed');
+    assert.equal(hk.date, HANUKKAH_FIRST_DAY[2026]); assert.equal(hk.status, 'open');
+    const post = (b) => fetch(`${base}/api/proposals/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }).then(r => r.json());
+    const a = await post({ count: 3, seeds: { occasions: ['Hanukkah'] } });
+    assert.ok(a.proposals.length && a.proposals.every(p => p.season === 'hanukkah'));
+    assert.ok(a.proposals.every(p => !/christmas|star of david/i.test(`${p.title} ${p.brief} ${p.description} ${p.etsyTitle || ''}`)), 'simple, no Christmas framing');
+    const b = await post({ count: 3, seeds: { themes: ['hanukkah menorah'] }, productTypes: ['mug'] });
+    assert.ok(b.proposals.every(p => p.season === null || p.season === 'hanukkah'), 'a Hanukkah theme is never tagged with another holiday');
+  } finally { await new Promise(r => server.close(r)); }
+});
+
+test('stub templates attach a pooled season only when the theme matches it (or no theme was given)', () => {
+  const today = '2026-10-06';
+  const windows = Object.fromEntries(seasons.HOLIDAYS.map(h => [h.id, seasons.windowFor(h.id, today)]).filter(([, w]) => w));
+  const run = (subjects, pool = ['halloween', 'hanukkah']) => templateProposals({ count: 12, subjects, types: ['mug'], seasonalPool: pool, windows, today });
+  const themed = run([{ term: 'hanukkah menorah', source: 'seed' }, { term: 'heron at dawn', source: 'seed' }]);
+  for (const p of themed) {
+    if (p.theme === 'heron at dawn') assert.equal(p.season, null, 'an unrelated theme gets no season');
+    else assert.ok(p.season === null || p.season === 'hanukkah', `menorah tagged ${p.season}`);
+    assert.ok(!(p.season && p.season !== 'hanukkah' && /hanukkah/i.test(p.title)), p.title);
+  }
+  const hkOnly = run([{ term: 'hanukkah menorah', source: 'seed' }, { term: 'heron at dawn', source: 'seed' }], ['hanukkah']);
+  assert.ok(hkOnly.some(p => p.season === 'hanukkah'), 'the matching theme does get its season');
+  assert.ok(hkOnly.filter(p => p.theme === 'heron at dawn').every(p => p.season === null));
+  assert.ok(run([]).some(p => p.season), 'no theme given: evergreen filler may take a pooled season');
+  const hk = hkOnly.find(p => p.season === 'hanukkah'); assert.match(hk.brief, /respectfully/); assert.ok(!/christmas/i.test(`${hk.title} ${hk.description}`));
+});
