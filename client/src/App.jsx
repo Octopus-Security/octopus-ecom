@@ -8,6 +8,8 @@ import ProductDrawer from './components/ProductDrawer.jsx';
 import ConfirmModal from './components/ConfirmModal.jsx';
 import { makeWatchApi } from './components/watch/watchApi.js';
 import WatchPanel from './components/watch/WatchPanel.jsx';
+import TrendsView from './components/trends/TrendsView.jsx';
+import { makeTrendsApi } from './components/trends/trendsApi.js';
 import SalesView from './components/SalesView.jsx';
 import BatchDialog from './components/BatchDialog.jsx';
 import BatchesView from './components/BatchesView.jsx';
@@ -24,7 +26,8 @@ export default function App() {
   const [batchFocus, setBatchFocus] = useState(null);
   const [openId, setOpenId] = useState(null);
   const watchApi = useMemo(() => makeWatchApi(), []);
-  const [view, setView] = useState('board'); // 'board' | 'batches' | 'sales' | 'watch' | 'playbooks' | 'plan'
+  const trendsApi = useMemo(() => makeTrendsApi(), []);
+  const [view, setView] = useState('board'); // 'board' | 'batches' | 'sales' | 'watch' | 'trends' | 'playbooks' | 'plan'
   const [flash, setFlash] = useState(''); // outcome of an Etsy connect round-trip (?etsy=...)
   const [pb, setPb] = useState({ id: null, productId: 0 });
   const [confirm, setConfirm] = useState(null); // {summary, phrase?, run(token, typed)}
@@ -71,6 +74,7 @@ export default function App() {
       {view === 'batches' && <BatchesView focusId={batchFocus} onOpenProduct={setOpenId} onChanged={refresh} />}
       {view === 'sales' && <SalesView onChanged={refresh} onOpenPlaybook={(id) => { setPb({ id, productId: 0 }); setView('playbooks'); }} />}
       {view === 'watch' && <WatchPanel api={watchApi} />}
+      {view === 'trends' && <TrendsView api={trendsApi} />}
       {view === 'playbooks' && <PlaybooksView api={watchApi} initialId={pb.id} initialProductId={pb.productId}
         products={board ? Object.values(board.columns).flat().map(p => ({ id: p.id, title: p.title })) : []} />}
       {view === 'plan' && <PlanChat />}

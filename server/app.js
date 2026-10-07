@@ -9,6 +9,7 @@ const { router, errorHandler } = require('./routes/api');
 const { createWatchRouter } = require('./watch');
 const { createPlaybookRouter } = require('./playbooks');
 const { createPlanRouter } = require('./plan/routes');
+const { createTrendsRouter } = require('./trends/routes');
 const { actorMiddleware } = require('./llm/actor');
 
 const DIST = path.join(__dirname, '..', 'client', 'dist');
@@ -36,6 +37,7 @@ function buildApp(deps) {
   app.use('/api/watch', createWatchRouter(deps, { service: deps.watch }));
   app.use('/api/playbooks', createPlaybookRouter(deps));
   app.use('/api/plan', createPlanRouter(deps));
+  app.use('/api/trends', createTrendsRouter(deps));
   app.use('/api', router(deps));
 
   if (fs.existsSync(path.join(DIST, 'index.html'))) {

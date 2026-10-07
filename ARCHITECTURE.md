@@ -414,3 +414,7 @@ automated-versus-manual table, the Redbubble research (verified/assumed, with UR
 - Redbubble is manual only: no upload automation (see `docs/CHANNELS.md`); its sales CSV headers are assumed until a real export is seen; account fees are not in NET. TeePublic and Printify Pop-Up Store channels are not built.
 - Printful (signature only), a real TrendResearch source, a visual (image) check for logos or likenesses.
 - Refund edge cases not verified against a real refunded order (fee treatment, partial statuses).
+
+## Trends (added 2026-10-06)
+
+`server/trends/` and `server/adapters/trend/{season,wikipedia,etsy-market,csv-import}.js`. Sources write numbers to `trend_metrics` (validated by `trends/metrics.js`, whitelist and aggregate-only; see COMPLIANCE.md section 6); `trends/score.js` combines them per theme x product type into `trend_scores` (weights untested, one config object); `trends/report.js` builds the weekly report served at `/api/trends/*` and shown in the Trends tab. The existing `TrendSource` / `adapters.trend.suggest` interface is unchanged; `deps.trends.trendSource` is a network-free TrendSource over stored numbers, and a rebuild raises concise `trend_signal` alerts for the top scores. Network happens only in `trends.collect()` (manual, or the weekly run, which is OFF unless `trend_weekly_enabled=true`). Etsy market is off by default behind a confirm-gated switch. Tables are additive (`trends/schema.js`).
