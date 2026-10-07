@@ -14,7 +14,7 @@ const { createPlaybookRouter } = require('../server/playbooks/routes');
 const { files } = require('../server/playbooks/render-md');
 
 const NOW = new Date().toISOString();
-const REQUIRED = ['redbubble-revive', 'redbubble-publish', 'redbubble-weekly', 'redbubble-takedown', 'redbubble-game-plan', 'launch-pod-etsy', 'out-of-stock', 'margin-fell', 'misprint-return-refund', 'views-no-sales', 'seasonal-prep', 'ip-complaint', 'dropshipping'];
+const REQUIRED = ['redbubble-revive', 'redbubble-publish', 'redbubble-weekly', 'redbubble-takedown', 'redbubble-game-plan', 'launch-pod-etsy', 'out-of-stock', 'margin-fell', 'misprint-return-refund', 'views-no-sales', 'seasonal-prep', 'ip-complaint', 'dropshipping', 'weekly-trend-review'];
 
 test('required playbooks exist, with unique step ids and valid check names', () => {
   for (const id of REQUIRED) assert.ok(byId(id), id);

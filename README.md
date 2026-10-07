@@ -42,6 +42,8 @@ credentials), connect Etsy, arm live writes (typed phrase), re-run "create POD p
 stops. It pauses when the daily spend cap is reached and survives a restart. **Blocklist** and the **print-readiness rule** are in Settings.
 **Channels:** Etsy is automatic (`api`); Redbubble is `manual`: ecom builds an upload pack (sized PNG, adapted and linted copy, markup, product types, checklist), tracks not listed / uploaded / live, and imports the Redbubble sales CSV into NET. See `docs/CHANNELS.md` and the `redbubble-*` playbooks.
 
+**Proposals:** the *Proposals* tab generates original product ideas from your own seeds (themes, occasions, audiences), your watchlist and any trend signals, each with an Etsy title and 13 tags, a Redbubble variant, a design brief and a ready-to-paste image prompt, an *estimated* price and margin, and a season window (list-by and last-realistic-order dates, flagged TOO LATE when this year's has passed; the lead times are assumed defaults you can edit). Every field is editable inline. **Approve** (or edit-and-approve) creates a pre-filled product in the IDEA stage and nothing more; **Reject** takes a reason that the next batch is told about; **Snooze** hides one until a date; **Regenerate** replaces one. It needs no keys (deterministic templates with the stub model); with cortex or an OpenAI key a cheap/standard model writes them, under the daily cap (calls billed through cortex are metered there). A weekly digest exists but is OFF by default (`proposals_weekly_enabled`); the checklist is the `weekly-proposals` playbook. Design: `ARCHITECTURE.md` "Proposals"; the originality rules: `docs/COMPLIANCE.md` section 8.
+
 **Legal/policy assumptions** and what is not verified: `docs/COMPLIANCE.md`.
 
 ## Status

@@ -15,3 +15,5 @@
 - [Weekly Redbubble routine](redbubble-weekly.md): Once a week (15 minutes), starting the week after the first upload.
 - [Redbubble takedown or IP notice received](redbubble-takedown.md): Redbubble emails that a work was removed, restricted, or reported for copyright, trademark or another policy problem.
 - [Redbubble game plan: what to cross-list, price, and expect](redbubble-game-plan.md): Deciding which designs go to Redbubble first and what a good first three months looks like.
+- [Weekly proposals review](weekly-proposals.md): Once a week, or whenever the Proposals tab has new cards: decide what becomes a product, what waits, and what the next batch should avoid.
+- [Weekly trend review](weekly-trend-review.md): Once a week (about 20 minutes), ideally Monday after the automatic Trends report, before deciding what to design next.

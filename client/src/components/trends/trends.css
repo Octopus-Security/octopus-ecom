@@ -1,0 +1,21 @@
+.trends { padding: 16px; display: grid; gap: 16px; max-width: 980px; }
+.trends h2 { margin: 0; font-size: 1.05rem; }
+.trends table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.trends th, .trends td { text-align: left; padding: 4px 6px; border-top: 1px solid var(--line); vertical-align: top; }
+.trends select, .trends textarea, .trends input { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+.trends .form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.trends .note { border: 1px solid var(--line); border-left: 3px solid var(--warn, #d9a400); border-radius: 6px; padding: 8px 12px; }
+.trends details { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+.trends summary { cursor: pointer; font-weight: 600; }
+.trends .pill { display: inline-block; padding: 0 8px; border-radius: 10px; font-size: .75rem; border: 1px solid var(--line); }
+.trends .pill.ok { border-color: var(--pos); color: var(--pos); }
+.trends .pill.disabled, .trends .pill.no_data { color: var(--muted); }
+.trends .pill.error { border-color: var(--neg); color: var(--neg); }
+.trends .bars { display: grid; grid-template-columns: repeat(5, 28px); gap: 4px; align-items: end; height: 34px; }
+.trends .bar { background: var(--line); border-radius: 2px 2px 0 0; position: relative; min-height: 2px; }
+.trends .bar.real { background: var(--accent, #4a8cff); }
+.trends .bar span { position: absolute; bottom: -14px; left: 0; right: 0; text-align: center; font-size: .6rem; color: var(--muted); }
+.trends .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; background: var(--muted); }
+.trends .dot.high { background: var(--pos); } .trends .dot.medium { background: var(--warn, #d9a400); } .trends .dot.low { background: var(--neg); }
+.trends .score { font-weight: 700; font-size: 1.05rem; }
+.trends .tag { font-size: .7rem; color: var(--muted); }

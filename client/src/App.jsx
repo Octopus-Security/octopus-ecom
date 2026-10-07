@@ -8,11 +8,14 @@ import ProductDrawer from './components/ProductDrawer.jsx';
 import ConfirmModal from './components/ConfirmModal.jsx';
 import { makeWatchApi } from './components/watch/watchApi.js';
 import WatchPanel from './components/watch/WatchPanel.jsx';
+import TrendsView from './components/trends/TrendsView.jsx';
+import { makeTrendsApi } from './components/trends/trendsApi.js';
 import SalesView from './components/SalesView.jsx';
 import BatchDialog from './components/BatchDialog.jsx';
 import BatchesView from './components/BatchesView.jsx';
 import PlaybooksView from './components/playbooks/PlaybooksView.jsx';
 import PlanChat from './components/PlanChat.jsx';
+import ProposalsView from './components/ProposalsView.jsx';
 
 export default function App() {
   const [summary, setSummary] = useState(null);
@@ -24,7 +27,8 @@ export default function App() {
   const [batchFocus, setBatchFocus] = useState(null);
   const [openId, setOpenId] = useState(null);
   const watchApi = useMemo(() => makeWatchApi(), []);
-  const [view, setView] = useState('board'); // 'board' | 'batches' | 'sales' | 'watch' | 'playbooks' | 'plan'
+  const trendsApi = useMemo(() => makeTrendsApi(), []);
+  const [view, setView] = useState('board'); // 'board' | 'batches' | 'proposals' | 'sales' | 'watch' | 'trends' | 'playbooks' | 'plan'
   const [flash, setFlash] = useState(''); // outcome of an Etsy connect round-trip (?etsy=...)
   const [pb, setPb] = useState({ id: null, productId: 0 });
   const [confirm, setConfirm] = useState(null); // {summary, phrase?, run(token, typed)}
@@ -69,8 +73,10 @@ export default function App() {
       {flash && <div className="banner warn-banner" role="status">{flash} <button className="ghost" onClick={() => setFlash('')}>Dismiss</button></div>}
       {view === 'board' && <Board board={board} onOpen={setOpenId} />}
       {view === 'batches' && <BatchesView focusId={batchFocus} onOpenProduct={setOpenId} onChanged={refresh} />}
+      {view === 'proposals' && <ProposalsView onOpenProduct={setOpenId} onChanged={refresh} askConfirm={setConfirm} />}
       {view === 'sales' && <SalesView onChanged={refresh} onOpenPlaybook={(id) => { setPb({ id, productId: 0 }); setView('playbooks'); }} />}
       {view === 'watch' && <WatchPanel api={watchApi} />}
+      {view === 'trends' && <TrendsView api={trendsApi} />}
       {view === 'playbooks' && <PlaybooksView api={watchApi} initialId={pb.id} initialProductId={pb.productId}
         products={board ? Object.values(board.columns).flat().map(p => ({ id: p.id, title: p.title })) : []} />}
       {view === 'plan' && <PlanChat />}

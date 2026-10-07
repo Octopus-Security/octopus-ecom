@@ -26,6 +26,8 @@ const { makePublisher } = require('./etsy/publish');
 const { makeSales } = require('./etsy/sales');
 const { makeOrchestrator } = require('./orchestrator');
 const { makeChannels } = require('./channels');
+const { makeProposals } = require('./proposals/service');
+const { makeTrends } = require('./trends');
 
 function createDeps(cfg, opts = {}) {
   const { secret, env = process.env, dbFile, out, authOptions, requireFn, now, upscale } = opts;
@@ -56,8 +58,10 @@ function createDeps(cfg, opts = {}) {
   const sales = makeSales({ db, settings, adapters, spend, etsy, log, now: opts.nowMs, lookbackDays: cfg.refundLookbackDays });
   const channels = makeChannels({ db, dataDir: cfg.dataDir, upscale: upscale !== undefined ? upscale : (cfg.image.upscale ? bilinearUpscale : null), log });
   const orchestrator = makeOrchestrator({ db, pipeline, stages, adapters, llm, spend, settings, publisher, dryRun, cfg, log, now: opts.nowDate });
-  const watch = makeWatchService({ db, settings, adapters, log, env, hooks: { reconcile: () => publisher.reconcileAll({ actor: 'agent' }), syncSales: () => sales.sync({ actor: 'agent', auto: true }) } });
-  return { channels, orchestrator, etsyAuth, etsy, publisher, sales, watch, pipeline, http, cfg, db, keystore, credentials, redactor, log, settings, confirm, dryRun, spend, stages, auth, llm, adapters };
+  const trends = makeTrends({ db, settings, http, etsyAuth, env, log, now: opts.trendNow });
+  const watch = makeWatchService({ db, settings, adapters, log, env, trendSource: trends.trendSource, hooks: { reconcile: () => publisher.reconcileAll({ actor: 'agent' }), syncSales: () => sales.sync({ actor: 'agent', auto: true }) } });
+  const proposals = makeProposals({ db, settings, spend, llm, adapters, pipeline, confirm, watch, trends, cfg, log, now: opts.nowDate });
+  return { trends, proposals, channels, orchestrator, etsyAuth, etsy, publisher, sales, watch, pipeline, http, cfg, db, keystore, credentials, redactor, log, settings, confirm, dryRun, spend, stages, auth, llm, adapters };
 }
 
 module.exports = { createDeps };

@@ -14,13 +14,14 @@ server/
   auth.js         sso | dev, owner gate, sameOrigin
   crypto.js keystore.js credentials.js redact.js log.js   sealed credentials, redacted logs
   db.js settings.js spend.js confirm.js dryrun.js events.js
-  domain/         stages.js (state machine), fees.js, fee-schedule.js, etsy-rules.js, blocklist.js (+ blocklist-seed.js), print-readiness.js
+  domain/         stages.js (state machine), fees.js, fee-schedule.js, etsy-rules.js, blocklist.js (+ blocklist-seed.js), print-readiness.js, seasons.js, proposal-risk.js
   orchestrator.js batch queue (M4)
   llm/            complete() + chat() + stub / openai / openai-compatible / cortex + router-path.js, actor.js
   plan/           Plan chat: context.js (compact shop summary), routes.js (/api/plan, per-user conversations)
   adapters/       http.js, contract.js, route.js, <kind>/{index,stub,<real>}.js
   routes/api.js   REST API
   watch/          schedulers, watchers, alerts (supplier, performance, keywords)
+  proposals/      Proposals queue: service.js (generate, edit, approve, digest), catalog.js, copy.js, templates.js; routes/proposals.js
   playbooks/      runbooks as data + check hooks
 ```
 
@@ -354,7 +355,7 @@ cap uses the America/New_York calendar day.
 
 SQLite via `node:sqlite`. Spec tables: `stores`, `products`, `designs`, `mockups`,
 `listings`, `events`, `costs`, `sales`; plus `settings`, `keys` (sealed),
-`blocklist`, `refunds`, `batches`, `batch_items`, `oauth_pending`. Migrations are additive only. `events.product_id` is NULL for system
+`blocklist`, `refunds`, `batches`, `batch_items`, `oauth_pending`, `proposals`, `proposal_runs`. Migrations are additive only. `events.product_id` is NULL for system
 events (`kind = 'system'`); `kind = 'note'` events belong to a product but are not stage changes. Confirm tokens are in memory (a restart invalidates them).
 
 ## Watchers and playbooks
@@ -383,6 +384,73 @@ events (`kind = 'system'`); `kind = 'note'` events belong to a product but are n
   aggregate result count per keyword.
 - `docs/playbooks/*.md` are rendered from `server/playbooks/definitions.js`
   (`node server/playbooks/render-md.js`); a test fails if they drift.
+
+## Proposals
+
+A **proposal** is an original product idea waiting for the owner: concept, rationale (naming the seeds and signals it came from), product type,
+a blueprint suggestion, a design brief, a ready-to-paste image prompt, an Etsy title and 13 tags, a Redbubble variant, an **estimated** price and
+margin, a season window and a risk check. Nothing is published from the Proposals tab: **Approve** creates a product in the IDEA stage through the
+existing `pipeline.create()` (then `selectPod` and `saveCopy`, so the brief, keywords, blueprint, print provider, list price, title, tags and
+description are pre-filled and every rule that applies to a hand-made product applies). Stage changes still go through `domain/stages.js` only.
+Layout: `server/proposals/service.js` (everything stateful), `catalog.js` (product types, blueprint match, price/margin estimate), `copy.js`
+(Etsy and Redbubble lint), `templates.js` (deterministic proposals), `domain/seasons.js` (holiday dates, lead times), `domain/proposal-risk.js`,
+`routes/proposals.js` (mounted by `routes/api.js`, so it is behind the same owner gate and `sameOrigin` as every other route).
+
+**Inputs.** The owner's **seeds** (themes, occasions, audiences, typed in the tab) plus trend signals read through the *existing* trend side only:
+(1) active `watchlist` rows; (2) the last 30 days of `trend_signal` alerts, which are what `watch/keywords.js` writes after asking the TrendSource, so
+generating re-uses cached results and does not re-hit an external source; (3) optionally, on request (`liveSignals`), `trendSource.check(entry)` itself
+(also `watch.trendSources[]` if a later change provides several); (4) `adapters.trend.suggest(query)`, **ignored while it is the echo stub**, which
+carries no market data. Every signal passes `watch/trend.js validateSignals` (message and severity only: no competitor titles, images, prices or shops) and
+the blocklist before it can reach a prompt. A seed that hits the blocklist is **refused** (422 `seed_blocklisted`) before anything is made or spent.
+The date is the ET date (`toLocaleDateString('en-CA', {timeZone: 'America/New_York'})`).
+
+**Seasons (`domain/seasons.js`).** Holiday dates are computed from their calendar rules (checked against known years); "Graduation season" and "Back
+to school" are conventions (`approx`). `lastOrder = date - production - shipping - buffer`, `listBy = lastOrder - ramp`; status is `open`, `tight`
+(orders can still arrive, a new listing has less than the ramp to be found) or `too_late` (today is past `lastOrder`; the window then also carries next
+year's dates, so "too late" points at next year). **The lead times (5/10/3/21 days) are assumed, unverified planning defaults**, not a Printify or carrier
+schedule; they are editable in the proposals settings (`proposals_lead_time`) and every window says so.
+
+**Generation.** One model call per batch (`llm.complete`, tier `cheap` when a router tier table or `LLM_MODEL_<TIER>` exists, else `standard`;
+overridable to `cheap`/`standard` by the `proposals_tier` setting or the request). The cap is checked before the call (`spend.assertCanSpend`, a refusal is
+a 429 and nothing is stored) and the actual cost is written to `costs` as kind `llm`; through cortex the call is billed there and records 0 here, as for
+the rest of the app. The prompt carries the date, a season table, the seeds and signals (labelled as data), the owner's earlier rejections with their
+reasons ("the owner didn't like X"), and what is already proposed or made. **Nothing a model returns is trusted:** Etsy text goes through `enforceCopy`
+and every repair is shown as a lint warning; a short tag list is padded to 13 from the keywords (recorded); the Redbubble variant is derived by
+`adaptCopy` and linted by `lintCopy`; the price and margin are computed here from `fees.js` (`minListPrice`, then a charm price, then `projectMargin`),
+never taken from the model. With the **stub LLM** the same pipeline runs on `templates.js` (deterministic for the same date, seeds and feedback), so
+dry-run and tests need no keys. With a real model a shortfall is reported rather than topped up with templates, and a reply with nothing usable stores
+nothing (502).
+
+**Estimates.** The base cost is the median variant cost the catalog reports (the stub's labelled estimate under DRY_RUN) or, when no blueprint title
+matches, an assumed per-type table, labelled `assumed, unverified`. Printify exposes the real base cost only on a created product, so every proposal
+price and margin carries `estimate: true` and the note; a hand-entered `baseCost` is labelled `owner_entered`. The blueprint is a suggestion by title
+match with the first listed provider; the card says to check it.
+
+**Risk check (`domain/proposal-risk.js`), recomputed on every edit and again at approve time.** Three layers: the blocklist over every text field; a
+deterministic tripwire for wording that leans on someone else's work ("inspired by", "in the style of", "fan art", "official", "parody of", "best-seller"
+...); and the model's own originality self-check returned with each proposal, plus a ready-to-paste originality prompt (`risk.selfCheckPrompt`) that
+refuses brands, characters, celebrities, team names, protected phrases and "inspired by <seller>". Levels: `blocked` (a blocklist or phrase hit, or a failed
+self-check) is dropped at generation and **cannot be approved** (422 `risk_blocked`) until edited clean; `review` (a lint error, or a too-late season)
+needs the **two-step confirm** (`confirm.js`, action `proposal.approve`, bound to the proposal and its `updated_at`); `clear` means "nothing obvious", never
+"cleared": the blocklist reads text only and cannot see a logo or a likeness.
+
+**Queue.** Table `proposals` (status `pending|approved|rejected|snoozed`, every field, source signals JSON, `product_id` once approved, timestamps) and
+`proposal_runs` (one row per generation: trigger, counts, drops, source, model, cost). Both additive (`CREATE TABLE IF NOT EXISTS`, `db.js`). Events go
+to the existing log: `systemEvent` for each generation and decision, `productEvent` on the created product. Every field is editable inline
+(`PATCH /api/proposals/:id`, validated; pending or snoozed only) and the server re-derives lint, risk, margin, window, image prompt and Redbubble copy; a
+derived value the owner has overwritten stays theirs until they ask to re-derive it. Approve with `edits` is edit-and-approve. **Reject** takes an optional
+reason that is stored and fed to the next prompt; rejected concepts are not proposed again. **Snooze** takes a future ET date; a snoozed proposal is pending
+again on that date (woken lazily on any read). **Regenerate** replaces one pending proposal in place. A later "Draft copy" on the product overwrites the
+pre-filled listing draft, as it would any draft.
+
+**Weekly digest.** `POST /api/proposals/digest` generates a fresh batch now from the saved digest settings (`GET` summarises what is waiting and what is
+urgent by season); the playbook `weekly-proposals` is the review checklist. The timer lives in `index.js main()` (hourly, plus once 30 s after boot, `unref`'d,
+cleared on shutdown) and calls `proposals.weeklyTick()`, which does nothing unless `proposals_weekly_enabled` is `true`. **It is OFF by default**; when on it runs
+at most once per 7 days and once per ET day, and skips when a backlog of three batches is unreviewed. It never throws and never runs under `require`.
+
+**API** (all owner-only, `sameOrigin` on writes): `GET /api/proposals[?status=]`, `/config`, `/runs`, `/settings`, `/digest`, `/:id`; `POST /generate`,
+`/digest`, `/settings`, `/:id/{approve,reject,snooze,unsnooze,regenerate}`; `PATCH /:id`. Codes: 400 bad input, 402/502 model failure, 404 unknown id, 409 wrong state
+or bad confirm token, 422 refused by a rule, 429 daily cap.
 
 ## Channels
 
@@ -414,3 +482,8 @@ automated-versus-manual table, the Redbubble research (verified/assumed, with UR
 - Redbubble is manual only: no upload automation (see `docs/CHANNELS.md`); its sales CSV headers are assumed until a real export is seen; account fees are not in NET. TeePublic and Printify Pop-Up Store channels are not built.
 - Printful (signature only), a real TrendResearch source, a visual (image) check for logos or likenesses.
 - Refund edge cases not verified against a real refunded order (fee treatment, partial statuses).
+- Proposals: never run against a real model, a live Printify catalog or live trend sources (tested with a fake model and the stubs). The lead times behind "too late" are assumed, unverified defaults; the base cost on a proposal is an estimate; a clean originality check is "nothing obvious", not clearance (see `docs/COMPLIANCE.md` section 8).
+
+## Trends (added 2026-10-06)
+
+`server/trends/` and `server/adapters/trend/{season,wikipedia,etsy-market,csv-import}.js`. Sources write numbers to `trend_metrics` (validated by `trends/metrics.js`, whitelist and aggregate-only; see COMPLIANCE.md section 6); `trends/score.js` combines them per theme x product type into `trend_scores` (weights untested, one config object); `trends/report.js` builds the weekly report served at `/api/trends/*` and shown in the Trends tab. The existing `TrendSource` / `adapters.trend.suggest` interface is unchanged; `deps.trends.trendSource` is a network-free TrendSource over stored numbers, and a rebuild raises concise `trend_signal` alerts for the top scores. Network happens only in `trends.collect()` (manual, or the weekly run, which is OFF unless `trend_weekly_enabled=true`). Etsy market is off by default behind a confirm-gated switch. Tables are additive (`trends/schema.js`).

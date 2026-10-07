@@ -58,6 +58,12 @@ const CHECKS = {
   dry_run_state({ settings }) {
     return settings.getBool('dry_run', true) ? pass('DRY_RUN is ON (nothing reaches a marketplace)') : unknown('DRY_RUN is OFF: writes are live. Confirm that is intended.');
   },
+  proposals_reviewed({ db }) {
+    let n;
+    try { n = db.prepare("SELECT COUNT(*) AS n FROM proposals WHERE status = 'pending' AND created_at < ?").get(new Date(Date.now() - 7 * 86400000).toISOString()).n; }
+    catch { return unknown('The proposals table could not be read.'); }
+    return n ? fail(`${n} proposal(s) have been pending for more than a week`) : pass('no proposal has been pending for more than a week');
+  },
   is_live({ product }) {
     if (!product) return unknown(needProduct);
     return ['published', 'live'].includes(product.stage) ? pass(`stage ${product.stage}`) : fail(`stage is ${product.stage}, not published/live`);
