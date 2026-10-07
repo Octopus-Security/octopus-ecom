@@ -17,6 +17,7 @@ export default function ProductDrawer({ id, onClose, onChanged, askConfirm }) {
   const [price, setPrice] = useState('');
   const [blockers, setBlockers] = useState([]);
   const [edit, setEdit] = useState({ title: '', tags: '', price: '' });
+  const [manual, setManual] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -141,6 +142,20 @@ export default function ProductDrawer({ id, onClose, onChanged, askConfirm }) {
           </button>
           <span className="muted small">{d.designs.length} design{d.designs.length === 1 ? '' : 's'} kept</span>
         </div>
+        <h4>Bring your own design</h4>
+        <div className="muted small">No image credits? Copy the prompt, make the image in another tool, then upload the PNG. It goes through the same print-readiness check; cost is $0 and it is recorded as a manual design.</div>
+        <div className="row">
+          <button className="ghost" disabled={!!busy} onClick={async () => { try { const r = await api.designPrompt(id); setManual(r); setNote(''); } catch (e) { setErr(e.message); } }}>Show prompt</button>
+          <label className="ghost">Upload design (PNG)
+            <input type="file" accept="image/png" disabled={!canRegen || !!busy} style={{ display: 'none' }}
+              onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) run('upload', () => api.uploadDesign(id, f)); }} />
+          </label>
+        </div>
+        {manual && (<>
+          <textarea readOnly rows={7} value={manual.text} onFocus={(e) => e.target.select()} />
+          <div className="row"><button onClick={() => { try { navigator.clipboard.writeText(manual.text); setNote('Prompt copied.'); } catch { setNote('Select the text and copy it.'); } }}>Copy prompt</button>
+            <span className="muted small">Target {manual.width}x{manual.height}px, aspect {manual.aspect}</span></div>
+        </>)}
       </section>
 
       <section>

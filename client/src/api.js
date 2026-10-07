@@ -12,7 +12,16 @@ async function call(method, url, body) {
   return data;
 }
 
+async function upload(url, file) {
+  const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file, credentials: 'same-origin' });
+  let data = null; try { data = await res.json(); } catch { /* non-JSON */ }
+  if (!res.ok) throw Object.assign(new Error((data && data.error) || `HTTP ${res.status}`), { status: res.status, data });
+  return data;
+}
+
 export const api = {
+  designPrompt: (id) => call('GET', `/api/products/${id}/design-prompt`),
+  uploadDesign: (id, file) => upload(`/api/products/${id}/upload-design`, file),
   products: () => call('GET', '/api/products'),
   summary: () => call('GET', '/api/summary'),
   createProduct: (b) => call('POST', '/api/products', b),

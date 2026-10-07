@@ -10,6 +10,13 @@ const { KEY_NAMES } = require('../keystore');
 const feeSchedule = require('../domain/fee-schedule');
 const fees = require('../domain/fees');
 
+/** Image type from magic bytes only. */
+function sniffImage(b) {
+  if (b.length >= 8 && b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'png';
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpeg';
+  return null;
+}
+
 function actorOf() { return 'human'; } // every request here is an authenticated owner
 
 function router(deps) {
@@ -62,6 +69,20 @@ function router(deps) {
   // POST /api/products/:id/generate-design {brief?}   (a brief = the operator edited it = regenerate)
   r.post('/products/:id/generate-design', wrap(async (req, res) => {
     const p = await pipe.generateDesign(req.params.id, { brief: (req.body || {}).brief, actor: actorOf(req) });
+    res.json({ ok: true, product: p });
+  }));
+  // GET /api/products/:id/design-prompt — what to paste into an external image tool (Nano Banana, Grok, Claude...).
+  r.get('/products/:id/design-prompt', wrap(async (req, res) => { res.json({ ok: true, ...pipe.manualDesignPrompt(req.params.id) }); }));
+  // POST /api/products/:id/upload-design — raw image bytes (Content-Type image/png). Owner-only like every route here
+  // (app-level requireOwner + sameOrigin). The type is decided by magic bytes, not the header or any filename.
+  const MAX_UPLOAD = 25 * 1024 * 1024;
+  r.post('/products/:id/upload-design', express.raw({ type: () => true, limit: MAX_UPLOAD }), wrap(async (req, res) => {
+    const buf = req.body;
+    if (!Buffer.isBuffer(buf) || buf.length === 0) return res.status(400).json({ error: 'Send the image as the raw request body', code: 'no_body' });
+    const kind = sniffImage(buf);
+    if (kind === 'jpeg') return res.status(415).json({ error: 'JPEG is not supported: designs are measured and upscaled as PNG. Export the image as PNG and upload that.', code: 'jpeg_unsupported' });
+    if (kind !== 'png') return res.status(415).json({ error: 'That is not a PNG image', code: 'not_image' });
+    const p = await pipe.attachDesign(req.params.id, buf, { actor: actorOf(req) });
     res.json({ ok: true, product: p });
   }));
   r.post('/products/:id/draft-copy', wrap(async (req, res) => {

@@ -14,6 +14,7 @@ const { makeRedactor } = require('./redact');
 const { createLogger } = require('./log');
 const { buildAuth } = require('./auth');
 const { buildAdapters } = require('./adapters');
+const { bilinearUpscale } = require('./upscale');
 const { makeHttp } = require('./adapters/http');
 
 const { makeLlm } = require('./llm');
@@ -48,7 +49,7 @@ function createDeps(cfg, opts = {}) {
   const llm = makeLlm({ cfg, credentials, http, spend, log, env, requireFn, fetchImpl: opts.fetchImpl });
   const etsyAuth = makeEtsyAuth({ db, keystore, credentials, http, cfg, log, now: opts.nowMs });
   const adapters = buildAdapters({ cfg, env, credentials, keystore, isDryRun: dryRun.isOn, log, llm, http, spend, upscale, etsyAuth });
-  const pipeline = makePipeline({ db, stages, adapters, spend, settings, dataDir: cfg.dataDir, isDryRun: dryRun.isOn, log, printDefaults: cfg.print });
+  const pipeline = makePipeline({ db, stages, adapters, spend, settings, dataDir: cfg.dataDir, isDryRun: dryRun.isOn, log, printDefaults: cfg.print, upscale: upscale !== undefined ? upscale : (cfg.image.upscale ? bilinearUpscale : null) });
   const etsy = makeEtsyService({ db, auth: etsyAuth, adapters, credentials, log, now: opts.nowMs });
   const publisher = makePublisher({ db, settings, stages, adapters, pipeline, spend, dryRun, etsy, log, env, sleep: opts.sleep });
   const sales = makeSales({ db, settings, adapters, spend, etsy, log, now: opts.nowMs, lookbackDays: cfg.refundLookbackDays });

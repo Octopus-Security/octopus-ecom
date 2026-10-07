@@ -108,6 +108,7 @@ function addColumn(db, table, column, ddl) {
 // Future additive migrations go here, wrapped in addColumn().
 function migrate(db) {
   // M1
+  addColumn(db, 'designs', 'source', 'TEXT');                                   // null/'generated' = image adapter; 'manual' = operator upload ($0 image cost)
   addColumn(db, 'products', 'keywords', "TEXT NOT NULL DEFAULT '[]'");        // JSON array of operator keywords
   addColumn(db, 'designs', 'native_width', 'INTEGER');                          // size the model returned
   addColumn(db, 'designs', 'native_height', 'INTEGER');

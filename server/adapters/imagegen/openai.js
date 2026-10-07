@@ -21,7 +21,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { readPngSize } = require('../../png');
+const { fitToArea } = require('../../upscale');
 const { pickSize, imageCostCents } = require('./pricing');
 
 const URL_GEN = 'https://api.openai.com/v1/images/generations';
@@ -56,19 +56,11 @@ function createOpenAiImages({ http, credentials, log = console, dataDir, spend, 
       fs.mkdirSync(dir, { recursive: true });
       const images = [];
       for (const it of items) {
-        let png = Buffer.from(it.b64_json, 'base64');
-        const native = readPngSize(png); // throws if the model did not return a PNG
-        let outW = native.width; let outH = native.height; let method = null;
-        if (upscale && (native.width < width || native.height < height)) {
-          try {
-            const up = await upscale({ png, targetWidth: width, targetHeight: height });
-            const real = readPngSize(up.png); // trust the bytes, not the hook's claim
-            png = up.png; outW = real.width; outH = real.height; method = up.method;
-          } catch (e) { method = `upscale failed (${e.message}); kept native size`; log.warn(`[imagegen] ${method}`); }
-        }
+        const fit = await fitToArea({ png: Buffer.from(it.b64_json, 'base64'), width, height, upscale, log }); // throws if the model did not return a PNG
+        const { png, width: outW, height: outH, nativeWidth, nativeHeight, upscaleMethod: method } = fit;
         const file = `gen-${crypto.randomBytes(6).toString('hex')}.png`;
         fs.writeFileSync(path.join(dir, file), png);
-        images.push({ file, width: outW, height: outH, mime: 'image/png', nativeWidth: native.width, nativeHeight: native.height, upscaled: outW !== native.width || outH !== native.height, upscaleMethod: method, requestedSize: size, quality: q });
+        images.push({ file, width: outW, height: outH, mime: 'image/png', nativeWidth, nativeHeight, upscaled: fit.upscaled, upscaleMethod: method, requestedSize: size, quality: q });
       }
       // Billed per image returned; never more than the estimate for the count asked.
       return { images, costCents: imageCostCents(model, q, size, images.length), model };

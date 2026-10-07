@@ -16,7 +16,7 @@
  * file gets bigger and softer; `method` says so, and the design row records both
  * the native and the final size.
  */
-const { decodePng, encodePng, resizeBilinear } = require('./png');
+const { decodePng, encodePng, resizeBilinear, readPngSize } = require('./png');
 
 async function bilinearUpscale({ png, targetWidth, targetHeight }) {
   const img = decodePng(png);
@@ -27,4 +27,22 @@ async function bilinearUpscale({ png, targetWidth, targetHeight }) {
   return { png: encodePng(out), width: w, height: h, method: `bilinear x${scale.toFixed(3)} (pure JS; adds pixels, not detail)` };
 }
 
-module.exports = { bilinearUpscale };
+/**
+ * The ONE place an incoming PNG meets the upscale hook, shared by the image adapter and manual upload so a
+ * generated and a hand-supplied design are treated identically. Returns the bytes to store and their REAL size
+ * (read back from the PNG header, never from the hook's claim). A failing hook keeps the native size.
+ */
+async function fitToArea({ png, width, height, upscale, log = console, tag = 'imagegen' }) {
+  const native = readPngSize(png); // throws if not a PNG
+  let out = png; let outW = native.width; let outH = native.height; let method = null;
+  if (upscale && (native.width < width || native.height < height)) {
+    try {
+      const up = await upscale({ png, targetWidth: width, targetHeight: height });
+      const real = readPngSize(up.png);
+      out = up.png; outW = real.width; outH = real.height; method = up.method;
+    } catch (e) { method = `upscale failed (${e.message}); kept native size`; log.warn(`[${tag}] ${method}`); }
+  }
+  return { png: out, width: outW, height: outH, nativeWidth: native.width, nativeHeight: native.height, upscaled: outW !== native.width || outH !== native.height, upscaleMethod: method };
+}
+
+module.exports = { bilinearUpscale, fitToArea };

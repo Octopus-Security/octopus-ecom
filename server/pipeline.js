@@ -25,11 +25,15 @@
  *  - One operation per product at a time (an in-flight set): a double click must not buy two images.
  */
 const path = require('node:path');
+const fs = require('node:fs');
+const crypto = require('node:crypto');
 const { S, parseFlags } = require('./domain/stages');
 const { scanFields, describeHits } = require('./domain/blocklist');
 const printReadiness = require('./domain/print-readiness');
 const { enforceCopy } = require('./domain/etsy-rules');
-const { designPrompt } = require('./domain/prompts');
+const { designPrompt, manualPrompt } = require('./domain/prompts');
+const { fitToArea } = require('./upscale');
+const { readPngSize } = require('./png');
 const { productEvent } = require('./events');
 const { projectMargin, marginFlags, snapshot } = require('./domain/fees');
 const { loadSchedule } = require('./domain/fee-schedule');
@@ -79,7 +83,7 @@ function primaryArea(p) {
 }
 const baseTitle = p => (p.title || p.brief || `Product ${p.id}`).slice(0, 120);
 
-function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun = () => true, log = console, printDefaults = {} }) {
+function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun = () => true, log = console, printDefaults = {}, upscale = null }) {
   const busy = new Set();
   const get = id => db.prepare('SELECT * FROM products WHERE id = ?').get(id);
   const need = id => { const p = get(Number(id)); if (!p) throw new PipelineError(`Product ${id} not found`, 404, 'not_found'); return p; };
@@ -211,6 +215,44 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
         earlyPrintFlag(id);
         if (p.stage === S.DESIGN) { productEvent(db, id, { actor, note: `design regenerated (${gen.model}, ${real.width}x${real.height})` }); return get(id); }
         return stages.transition(id, S.DESIGN, { actor, note: `design generated (${gen.model}, ${real.width}x${real.height})` });
+      } catch (e) { throw failure(p, e, actor, 'saving the design'); }
+    });
+  }
+
+  /** The prompt generateDesign would send, plus the size/aspect, formatted for pasting into an external image tool. */
+  function manualDesignPrompt(id) {
+    const p = need(id);
+    if (!p.brief) throw new PipelineError('The product has no brief');
+    return manualPrompt(p, primaryArea(p));
+  }
+
+  /**
+   * Bring-your-own design: a PNG made elsewhere takes the same path a generated one does (upscale hook, real size read
+   * from the PNG header, designs row, early print flag, transition to design_generated). Provenance: source='manual',
+   * model='manual', cost 0 (so no `costs` row). Callers sniff the bytes first (routes); this re-checks it is a PNG.
+   */
+  function attachDesign(id, png, { actor = 'human' } = {}) {
+    id = Number(id);
+    return exclusive(id, async () => {
+      let p = need(id);
+      if (![S.IDEA, S.DESIGN, S.MOCKUP, S.DRAFTED, S.PENDING, S.FAILED].includes(p.stage)) throw new PipelineError(`A design cannot be added while the product is ${p.stage}`, 409, 'illegal_stage');
+      let fit;
+      try { const sz = readPngSize(png); if (sz.width * sz.height > 100e6) throw new Error('image dimensions are too large'); fit = await fitToArea({ png, ...primaryArea(p), upscale, log, tag: 'upload' }); }
+      catch (e) { throw new PipelineError(`Not a usable PNG: ${e.message}`, 415, 'not_png'); }
+      if (p.stage === S.FAILED) p = stages.transition(id, S.IDEA, { actor, note: 'retry' });
+      const dir = path.join(dataDir, 'images');
+      fs.mkdirSync(dir, { recursive: true });
+      const file = `man-${crypto.randomBytes(6).toString('hex')}.png`;
+      fs.writeFileSync(path.join(dir, file), fit.png);
+      try {
+        db.prepare(`INSERT INTO designs(product_id,image_path,prompt,width,height,cost_cents,model,created_at,native_width,native_height,upscale_method,source)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`)
+          .run(id, file, designPrompt(p), fit.width, fit.height, 0, 'manual', new Date().toISOString(), fit.nativeWidth, fit.nativeHeight, fit.upscaled ? (fit.upscaleMethod || 'upscaled') : null, 'manual');
+        db.prepare('UPDATE products SET model_used = ? WHERE id = ?').run('manual', id);
+        earlyPrintFlag(id);
+        const note = `design uploaded (manual, ${fit.width}x${fit.height})`;
+        if (p.stage === S.DESIGN) { productEvent(db, id, { actor, note }); return get(id); }
+        return stages.transition(id, S.DESIGN, { actor, note });
       } catch (e) { throw failure(p, e, actor, 'saving the design'); }
     });
   }
@@ -513,7 +555,7 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
     const p = need(id);
     const designs = db.prepare('SELECT * FROM designs WHERE product_id = ? ORDER BY id DESC').all(p.id).map(d => ({
       id: d.id, url: `/api/images/${d.id}`, prompt: d.prompt, width: d.width, height: d.height, nativeWidth: d.native_width, nativeHeight: d.native_height,
-      upscaleMethod: d.upscale_method, costCents: d.cost_cents, model: d.model, createdAt: d.created_at,
+      upscaleMethod: d.upscale_method, source: d.source || 'generated', costCents: d.cost_cents, model: d.model, createdAt: d.created_at,
     }));
     const costs = db.prepare('SELECT id, kind, amount_cents AS amountCents, note, ts FROM costs WHERE product_id = ? ORDER BY id').all(p.id);
     const events = db.prepare('SELECT id, kind, stage_from AS stageFrom, stage_to AS stageTo, actor, note, ts FROM events WHERE product_id = ? ORDER BY id').all(p.id);
@@ -524,7 +566,7 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
     return { printReadiness: readiness, product: { ...p, keywords: kw(p), flags: parseFlags(p), pod_variant_ids: parse(p.pod_variant_ids, []), print_spec: parse(p.print_spec, null) }, mockups, economics: unitEconomics(p), designs, costs, costTotalCents: costs.reduce((a, c) => a + c.amountCents, 0), events, copy };
   }
 
-  return { checkPrint, printRule, addFlags, rescanBlocklist, create, generateDesign, draftCopy, editCopy, detail, validateInput, PipelineError, selectPod, createPodProduct, refreshMockups, draftListing, setPrice, submit, approve, reject, archive, marginPreview, applyMargin, exclusive, get, need, setFlag };
+  return { checkPrint, printRule, addFlags, rescanBlocklist, create, generateDesign, manualDesignPrompt, attachDesign, draftCopy, editCopy, detail, validateInput, PipelineError, selectPod, createPodProduct, refreshMockups, draftListing, setPrice, submit, approve, reject, archive, marginPreview, applyMargin, exclusive, get, need, setFlag };
 }
 
 module.exports = { makePipeline, PipelineError, PRINT_W, PRINT_H };

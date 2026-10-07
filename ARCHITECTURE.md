@@ -122,6 +122,15 @@ and `upscale_method`; print-readiness (M4) can reject on the real size. `IMAGE_U
 the native size. Cost comes from the dated table in `adapters/imagegen/pricing.js`, rounded up to a
 cent; an unpriced model/quality/size is refused rather than guessed.
 
+**Bring your own design (no image credits).** `GET /api/products/:id/design-prompt` returns the exact `designPrompt()` text the
+pipeline would send plus the blueprint's target size, aspect and extra guard rails (`manualPrompt` in `domain/prompts.js`). The
+operator makes the image elsewhere and `POST /api/products/:id/upload-design` takes the PNG as the raw body (25 MB cap, type decided
+by magic bytes; JPEG is recognised and refused with a "export as PNG" message, because the upscale and print-readiness paths read PNG
+only). `pipeline.attachDesign` then runs the same `fitToArea` (upscale hook, real size from the header) as the image adapter,
+writes a `designs` row with `source='manual'`, `model='manual'`, cost 0 (no `costs` row), raises the same early `print_not_ready`
+flag and moves the product to `design_generated`. `designs.source` is null/`generated` for adapter output, so the listing's
+AI-disclosure handling can tell them apart; an upload is NOT assumed to be human-made (it may come from an AI tool).
+
 **LLM (`server/llm/`).** `openai` (BYOK) and `openai-compatible` (`LLM_BASE_URL` + optional
 `LLM_API_KEY`) share `chat.js`; the provider is resolved per call, so a key saved in the panel works
 without a restart. Model per tier: `LLM_MODEL_<TIER>` > the `ROUTER_PATH` table (read-only, `TIERS` +
