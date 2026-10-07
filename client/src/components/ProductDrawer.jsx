@@ -1,13 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, dollars } from '../api.js';
 import FeeBreakdown from './FeeBreakdown.jsx';
+import ChannelPanel from './ChannelPanel.jsx';
 
 // Etsy limits, shown live. Corroborated 2026-10-05, official page not read: see server/domain/etsy-rules.js.
 const LIM = { title: 140, tags: 13, tag: 20 };
 const Counter = ({ n, max, label }) => <span className={`counter ${n > max ? 'neg' : n === max ? 'warn' : 'muted'}`}>{n}/{max} {label}</span>;
 const parseTags = (s) => s.split(',').map((t) => t.trim()).filter(Boolean);
 
-export default function ProductDrawer({ id, onClose, onChanged, askConfirm }) {
+export default function ProductDrawer({ id, onClose, onChanged, askConfirm, onOpenPlaybook }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState('');
@@ -212,6 +213,8 @@ export default function ProductDrawer({ id, onClose, onChanged, askConfirm }) {
               {note && <div className="small pos">{note}</div>}
             </>)}
         </section>)}
+
+      {latest && <ChannelPanel id={id} onChanged={onChanged} onOpenPlaybook={onOpenPlaybook ? (pb, pid) => { onClose(); onOpenPlaybook(pb, pid); } : null} />}
 
       <section>
         <h4>Costs</h4>

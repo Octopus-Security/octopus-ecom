@@ -62,6 +62,13 @@ export const api = {
   editListing: (id, b) => call('PATCH', `/api/products/${id}/listing`, b),
   syncSales: () => call('POST', '/api/sales/sync', {}),
   sales: () => call('GET', '/api/sales'),
+  // Channels (Etsy: api, Redbubble: manual)
+  channels: () => call('GET', '/api/channels'),
+  productChannels: (id) => call('GET', `/api/products/${id}/channels`),
+  setChannelState: (id, channel, b) => call('POST', `/api/products/${id}/channels/${channel}/state`, b),
+  redbubblePack: (id, markup) => call('GET', `/api/products/${id}/redbubble/pack${markup ? `?markup=${encodeURIComponent(markup)}` : ''}`),
+  importRedbubbleSales: (csv, preview) => call('POST', '/api/sales/redbubble/import', { csv, preview }),
+  addRedbubbleSale: (b) => call('POST', '/api/sales/redbubble/entry', b),
   // M4: blocklist, print rule, batches
   blocklist: () => call('GET', '/api/blocklist'),
   blocklistAdd: (term, kind) => call('POST', '/api/blocklist', { term, kind }),

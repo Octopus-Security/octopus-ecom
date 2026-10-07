@@ -125,12 +125,12 @@ function makeSales({ db, adapters, spend, etsy, settings = null, log = console, 
   /** Sales list + per-store roll-up (untracked receipts are counted here, never dropped). */
   function list({ limit = 100 } = {}) {
     const rows = db.prepare(`SELECT s.id, s.external_order_id AS orderId, s.transaction_id AS transactionId, s.quantity, s.gross_cents AS grossCents, s.etsy_fees_cents AS etsyFeesCents,
-        s.processing_fee_cents AS processingFeeCents, s.net_cents AS netCents, s.refund_cents AS refundCents, s.cogs_cents AS cogsCents, s.fee_source AS feeSource, s.source, s.ts, s.store_id AS storeId,
+        s.processing_fee_cents AS processingFeeCents, s.net_cents AS netCents, s.refund_cents AS refundCents, s.cogs_cents AS cogsCents, s.fee_source AS feeSource, s.source, s.channel, s.ts, s.store_id AS storeId,
         s.product_id AS productId, s.external_listing_id AS externalListingId, p.title AS productTitle
       FROM sales s LEFT JOIN products p ON p.id = s.product_id ORDER BY s.ts DESC, s.id DESC LIMIT ?`).all(Math.min(Math.max(limit | 0, 1), 500));
-    const perStore = db.prepare(`SELECT s.store_id AS storeId, st.name AS storeName, s.source, COUNT(*) AS lines, COALESCE(SUM(s.gross_cents),0) AS grossCents, COALESCE(SUM(s.net_cents),0) AS netCents, COALESCE(SUM(s.refund_cents),0) AS refundedCents,
+    const perStore = db.prepare(`SELECT s.store_id AS storeId, st.name AS storeName, s.source, s.channel, COUNT(*) AS lines, COALESCE(SUM(s.gross_cents),0) AS grossCents, COALESCE(SUM(s.net_cents),0) AS netCents, COALESCE(SUM(s.refund_cents),0) AS refundedCents,
         COALESCE(SUM(s.cogs_cents),0) AS cogsCents, SUM(CASE WHEN s.listing_id IS NULL THEN 1 ELSE 0 END) AS untrackedLines
-      FROM sales s LEFT JOIN stores st ON st.id = s.store_id GROUP BY s.store_id, s.source`).all();
+      FROM sales s LEFT JOIN stores st ON st.id = s.store_id GROUP BY s.store_id, s.source, s.channel`).all();
     return { sales: rows, perStore };
   }
 

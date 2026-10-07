@@ -69,7 +69,7 @@ export default function App() {
       {flash && <div className="banner warn-banner" role="status">{flash} <button className="ghost" onClick={() => setFlash('')}>Dismiss</button></div>}
       {view === 'board' && <Board board={board} onOpen={setOpenId} />}
       {view === 'batches' && <BatchesView focusId={batchFocus} onOpenProduct={setOpenId} onChanged={refresh} />}
-      {view === 'sales' && <SalesView onChanged={refresh} />}
+      {view === 'sales' && <SalesView onChanged={refresh} onOpenPlaybook={(id) => { setPb({ id, productId: 0 }); setView('playbooks'); }} />}
       {view === 'watch' && <WatchPanel api={watchApi} />}
       {view === 'playbooks' && <PlaybooksView api={watchApi} initialId={pb.id} initialProductId={pb.productId}
         products={board ? Object.values(board.columns).flat().map(p => ({ id: p.id, title: p.title })) : []} />}
@@ -77,7 +77,8 @@ export default function App() {
       {drawer && <SettingsDrawer onClose={() => { setDrawer(false); refresh(); }} askConfirm={setConfirm} />}
       {composer && <Composer onClose={() => { setComposer(false); refresh(); }} onChanged={refresh} onOpen={(id) => { setComposer(false); setOpenId(id); }} />}
       {batchDialog && <BatchDialog onClose={() => setBatchDialog(false)} onStarted={(id) => { setBatchDialog(false); setBatchFocus(id); setView('batches'); refresh(); }} />}
-      {openId !== null && <ProductDrawer id={openId} onClose={() => { setOpenId(null); refresh(); }} onChanged={refresh} askConfirm={setConfirm} />}
+      {openId !== null && <ProductDrawer id={openId} onClose={() => { setOpenId(null); refresh(); }} onChanged={refresh} askConfirm={setConfirm}
+        onOpenPlaybook={(id, productId) => { setPb({ id, productId: productId || 0 }); setView('playbooks'); }} />}
       {confirm && <ConfirmModal {...confirm} onClose={() => setConfirm(null)} />}
     </div>
   );

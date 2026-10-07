@@ -10,3 +10,8 @@
 - [Seasonal and holiday prep (production cut-off dates)](seasonal-prep.md): A gift season is coming (you decide which) and listings need to be ready, with honest delivery estimates.
 - [IP / trademark complaint received](ip-complaint.md): Etsy (or a rights holder) notified you of an intellectual-property complaint, removed a listing, or sent a takedown.
 - [Dropshipping: what is allowed where](dropshipping.md): You are considering selling items you did not design or make, shipped directly from a third-party supplier. Read this BEFORE building or listing anything.
+- [Revive a dormant Redbubble account](redbubble-revive.md): You are about to use the existing Redbubble account again after a long gap, before the first upload.
+- [Publish a design to Redbubble](redbubble-publish.md): A product with a finished design should also be sold on Redbubble. ecom prepares the pack; you do the upload.
+- [Weekly Redbubble routine](redbubble-weekly.md): Once a week (15 minutes), starting the week after the first upload.
+- [Redbubble takedown or IP notice received](redbubble-takedown.md): Redbubble emails that a work was removed, restricted, or reported for copyright, trademark or another policy problem.
+- [Redbubble game plan: what to cross-list, price, and expect](redbubble-game-plan.md): Deciding which designs go to Redbubble first and what a good first three months looks like.

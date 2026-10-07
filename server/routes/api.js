@@ -36,6 +36,7 @@ function router(deps) {
              (SELECT COALESCE(SUM(amount_cents),0) FROM costs c WHERE c.product_id = p.id) AS cost_cents
       FROM products p LEFT JOIN stores s ON s.id = p.store_id ORDER BY p.updated_at DESC`).all();
     const floor = settings.getInt('margin_floor_cents', 200);
+    const chan = deps.channels.state.boardMap();
     const columns = Object.fromEntries(STAGES.map(s => [s, []]));
     for (const p of rows) {
       (columns[p.stage] || (columns[p.stage] = [])).push({
@@ -46,6 +47,7 @@ function router(deps) {
         thumbnail: p.mockup_id ? (p.mockup_url || `/api/mockups/${p.mockup_id}/file`) : p.design_id ? `/api/images/${p.design_id}` : null,
         thumbnailKind: p.mockup_id ? 'mockup' : p.design_id ? 'design' : null,
         podBaseCostCents: p.pod_base_cost_cents, podCostSource: p.pod_cost_source, marginFloorCents: floor, updatedAt: p.updated_at,
+        channels: { etsy: p.stage === 'live' ? 'live' : p.stage === 'published' ? 'uploaded' : 'not_listed', redbubble: (chan.get(p.id) || {}).redbubble || 'not_listed' },
       });
     }
     res.json({ stages: STAGES, columns, count: rows.length });
@@ -97,7 +99,7 @@ function router(deps) {
     const l = deps.publisher.listingOf(d.product.id);
     const published = l && l.status !== 'draft' ? { externalId: l.external_id, url: l.url, status: l.status, views: l.views, checkedAt: l.checked_at } : null;
     const readiness = d.product.stage === S.APPROVED ? (await deps.publisher.prepare(d.product)) : null;
-    out(res, 200, { ok: true, ...d, published, publish: readiness && { blockers: readiness.blockers, dryRun: dryRun.isOn() } });
+    out(res, 200, { ok: true, ...d, channels: deps.channels.statesFor(d.product), salesByChannel: deps.channels.salesByChannel(d.product.id), published, publish: readiness && { blockers: readiness.blockers, dryRun: dryRun.isOn() } });
   }));
 
 
@@ -146,6 +148,8 @@ function router(deps) {
 
   // Publish, listing edits, Etsy connection and sales live in routes/etsy.js.
   require('./etsy').mount(r, deps);
+  // Channels: Redbubble upload pack, per-channel listing state, Redbubble sales import/entry.
+  require('./channels').mount(r, deps);
   // M4: blocklist editor, batch orchestrator.
   require('./m4').mount(r, deps);
 
@@ -261,6 +265,7 @@ function errorHandler(deps) {
     if (err.name === 'DryRunError') return res.status(400).json({ error: err.message });
     if (err.name === 'StageError') return res.status(err.code === 'not_found' ? 404 : 409).json({ error: err.message, code: err.code });
     if (err.name === 'PipelineError') return res.status(err.status).json({ error: err.message, code: err.code, ...(err.failed ? { failed: true } : {}), ...(err.readiness ? { readiness: err.readiness } : {}) });
+    if (err.name === 'ChannelError') return res.status(err.status || 400).json({ error: err.message, code: err.code });
     if (err.name === 'BatchError') return res.status(err.status).json({ error: err.message, code: err.code });
     if (err.name === 'SpendCapError') return res.status(429).json({ error: err.message, code: 'spend_cap' });
     if (err.type === 'entity.parse.failed') return res.status(400).json({ error: 'Invalid JSON' });

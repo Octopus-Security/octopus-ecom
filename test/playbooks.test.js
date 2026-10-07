@@ -14,7 +14,7 @@ const { createPlaybookRouter } = require('../server/playbooks/routes');
 const { files } = require('../server/playbooks/render-md');
 
 const NOW = new Date().toISOString();
-const REQUIRED = ['launch-pod-etsy', 'out-of-stock', 'margin-fell', 'misprint-return-refund', 'views-no-sales', 'seasonal-prep', 'ip-complaint', 'dropshipping'];
+const REQUIRED = ['redbubble-revive', 'redbubble-publish', 'redbubble-weekly', 'redbubble-takedown', 'redbubble-game-plan', 'launch-pod-etsy', 'out-of-stock', 'margin-fell', 'misprint-return-refund', 'views-no-sales', 'seasonal-prep', 'ip-complaint', 'dropshipping'];
 
 test('required playbooks exist, with unique step ids and valid check names', () => {
   for (const id of REQUIRED) assert.ok(byId(id), id);
@@ -41,7 +41,7 @@ test('docs/playbooks/*.md match the definitions (run render-md.js after editing)
 test('every policy claim is dated verified-with-url or assumed; nothing is claimed verified without a url', () => {
   const all = PLAYBOOKS.map(p => p.background + p.steps.map(s => s.detail || '').join('\n')).join('\n');
   for (const m of all.matchAll(/(?<!un)verified[^\n]{0,40}/g)) {
-    assert.match(m[0], /verified 2026-10-05 - https:\/\//, m[0]);
+    assert.match(m[0], /verified 20\d\d-\d\d-\d\d - https:\/\//, m[0]);
   }
   const drop = byId('dropshipping').background;
   assert.match(drop, /ftc\.gov/); assert.match(drop, /assumed, unverified/);

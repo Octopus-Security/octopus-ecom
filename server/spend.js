@@ -41,7 +41,11 @@ function makeSpend({ db, settings, now = () => new Date() }) {
       const cogs = q("SELECT COALESCE(SUM(amount_cents),0) AS v FROM costs WHERE kind = 'pod'").v;
       const fees = q("SELECT COALESCE(SUM(amount_cents),0) AS v FROM costs WHERE kind = 'listing_fee'").v;
       const cap = capCents(); const today = todayCents();
+      // Revenue by channel (real receipts only). Redbubble lines are the artist margin: no marketplace fee, no COGS (it bears production).
+      const perChannel = {};
+      for (const r of db.prepare("SELECT channel, COUNT(*) AS n, COALESCE(SUM(gross_cents),0) AS gross, COALESCE(SUM(net_cents),0) AS net FROM sales WHERE source != 'stub' GROUP BY channel").all()) perChannel[r.channel] = { orders: r.n, grossCents: r.gross, afterFeesCents: r.net };
       return {
+        channels: perChannel,
         currency: 'USD',
         spend: { totalCents: total, todayCents: today, dailyCapCents: cap, capReached: today >= cap, capPct: cap > 0 ? Math.min(100, Math.round((today / cap) * 100)) : 100 },
         revenue: { grossCents: s.gross, refundedCents: s.refunded, afterFeesCents: s.net, orders: s.n, cogsCents: cogs, listingFeesCents: fees },

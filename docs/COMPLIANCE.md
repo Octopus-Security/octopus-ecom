@@ -87,6 +87,18 @@ operator's responsibility.
 - **Rate limits and retries:** one HTTP wrapper with per-host buckets and jittered backoff; non-GET requests are not retried on 5xx.
 - **Fees:** **verified 2026-10-06** from Etsy's own "Fees for selling on Etsy" page (shown during shop setup), read by the owner: $29 one-time set-up fee; $0.20 listing fee (create or renew); 6.5% transaction fee on the order total excluding tax; 3% + $0.25 payment processing on the order total including tax and shipping (US); 2.5% currency conversion when listing and payout currencies differ; Offsite Ads 12-15% on ad-driven sales (optional for most sellers); fees exclude VAT/similar taxes. They are an editable schedule (`server/domain/fee-schedule.js`, Settings -> Etsy fees); each projection records the schedule version it used. **Assumed, unverified (not on that page):** which of 12%/15% applies (commonly 15% under $10k/yr, 12% at or above); a $100 per-order Offsite Ads cap; the currency-conversion base (order total incl. tax); the sales-tax rate (7%, an estimate used only for the processing-fee base); the expected Offsite Ads share (default 0). **Not modelled:** the $0.20 auto-renew fee charged again on each sale of a multi-quantity listing (assumed, unverified). Where real Etsy receipts are ingested, Etsy's reported processing fee remains the truth; the schedule is only the fallback and the transaction-fee computation.
 
+## 7. Redbubble (second channel, manual)
+
+Researched 2026-10-06; Redbubble's help, blog and terms pages all returned HTTP 403, so every claim is a search-result summary and stays
+`assumed, unverified` here; the table with sources and per-claim status is in `docs/CHANNELS.md`. What matters for compliance:
+
+- **No automation.** A summary of Redbubble's Community and Content Guidelines says uploading with any bot, scraper or other automated means without written
+  permission is prohibited (https://help.redbubble.com/hc/en-us/articles/202270929-Community-and-Content-Guidelines). ecom therefore only prepares files and text; a person uploads. Do not add login or browser automation.
+- **Same IP standard as Etsy.** The blocklist runs on the Redbubble copy (a hit is a lint error). Takedown handling: `docs/playbooks/redbubble-takedown.md`.
+- **AI.** A search summary says Redbubble has an AI-generated checkbox on upload; another source found no AI wording in the guidelines. The pack's checklist tells the operator to tick it for AI-made designs. The upload form is the authority.
+- **Money and tax.** Redbubble pays the artist margin; account fees and any excess markup fee come off payouts and are not in NET. Tax-form requirements were not found; follow the account's prompts.
+
+
 ## Open questions for the operator
 
 1. **AI disclosure on Etsy.** Secondary sources say AI-made designs must be disclosed in the listing, with "Designed by" and an AI checkbox. Read

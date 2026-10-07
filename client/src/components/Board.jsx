@@ -14,6 +14,9 @@ function Card({ p, onOpen }) {
       <div className="muted small">{p.store || 'no store'}{p.modelUsed ? ` - ${p.modelUsed}` : ''} - cost {dollars(p.costCents)}</div>
       {p.designSize && <div className="muted small">{p.designSize}px</div>}
       <div className={`small ${marginClass(p)}`}>Margin {dollars(p.projectedMarginCents)}{p.podCostSource === 'estimate' ? ' (est.)' : ''}</div>
+      {p.channels && <div className="small chans" aria-label="Sales channels">
+        {[['etsy', 'Etsy'], ['redbubble', 'Redbubble']].map(([k, l]) => <span key={k} className={`chip ${p.channels[k] === 'live' ? 'pos' : p.channels[k] === 'uploaded' ? 'warn' : p.channels[k] === 'removed' ? 'neg' : 'muted'}`} title={`${l}: ${p.channels[k].replace('_', ' ')}`}>{l} {p.channels[k].replace('_', ' ')}</span>)}
+      </div>}
       {p.flags.map((f) => <span className="flag" key={f.code} title={f.detail}>{f.code}</span>)}
       {p.failedReason && <div className="small neg">{p.failedReason}</div>}
     </article>

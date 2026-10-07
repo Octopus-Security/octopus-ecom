@@ -13,6 +13,15 @@
 const ETSY_POD = 'assumed, unverified (Etsy official pages returned HTTP 403 on 2026-10-05; corroborated by a third-party summary that was read: https://www.listadum.com/blog/understanding-etsys-rules-for-print-on-demand-sellers; official page to check: https://help.etsy.com/hc/en-us/articles/23948763872151)';
 const FTC = 'verified 2026-10-05 - https://www.ftc.gov/business-guidance/resources/business-guide-ftcs-mail-internet-or-telephone-order-merchandise-rule';
 const ETSY_IP = 'assumed, unverified (https://etsy.com/legal/ip/ returned HTTP 403 on 2026-10-05; only search-result summaries were seen)';
+// Redbubble (researched 2026-10-06): help.redbubble.com, blog.redbubble.com and redbubble.com/terms all returned HTTP 403 to the fetch tool.
+// Every Redbubble claim below is therefore from SEARCH-RESULT SUMMARIES of those pages and is marked assumed, with the page to confirm.
+const RB_NOAPI = 'assumed, unverified (search results on 2026-10-06 found no public or partner upload API; the only API integration found is order fulfilment for print partners, https://connect-support.gelato.com/en/articles/10793373-integrating-gelatoconnect-with-redbubble)';
+const RB_BOTS = 'assumed, unverified (a search summary of https://help.redbubble.com/hc/en-us/articles/202270929-Community-and-Content-Guidelines said uploading with any bot, scraper or other automated means without written permission is prohibited; page returned HTTP 403; read it yourself before relying on this either way)';
+const RB_PAY = 'assumed, unverified (search summaries of https://help.redbubble.com/hc/en-us/articles/360035050972 and https://help.redbubble.com/hc/articles/360027407652: payment needs valid payment details and at least $20 earned from orders shipped the previous month; PayPal must be set up as a confirmed account by adding and confirming a bank account; payments start processing on the 15th)';
+const RB_MARKUP = 'assumed, unverified (search summaries of https://help.redbubble.com/hc/en-us/articles/202270799 and https://blog.redbubble.com/2025/08/excess-markup-fee-explained/: default markup 20%; from 2025-09-01 markup above 20% is charged a 50% excess markup fee on Standard and Premium accounts)';
+const RB_CSV = 'assumed, unverified (search summary of https://help.redbubble.com/hc/en-us/articles/4412488515092: a CSV sales history is available from the Sales History page and is emailed quarterly; the column headers were not found anywhere)';
+const RB_COUNTER = 'assumed, unverified (search summary of https://help.redbubble.com/hc/en-us/articles/20181954084500-Counter-Notice-FAQ: a counter notice names you, gives contact details, the work URL, why the takedown was a mistake, and supporting evidence)';
+const RB_AI = 'assumed, unverified (a search summary says Redbubble has an AI-generated checkbox on upload; a different search could not find any AI wording in its Community and Content Guidelines; the upload form is the authority)';
 
 const PLAYBOOKS = [
   {
@@ -167,7 +176,136 @@ Order samples yourself; check quality and the true delivery time; confirm they w
       { id: 'owner', title: 'Record the decision with the owner; this service will not build a dropshipping adapter without it' },
     ],
   },
+  // ---- Redbubble (manual channel: ecom prepares, a human uploads; see docs/CHANNELS.md) -------------------------------------
+  {
+    id: 'redbubble-revive',
+    title: 'Revive a dormant Redbubble account',
+    whenToUse: 'You are about to use the existing Redbubble account again after a long gap, before the first upload.',
+    background: `Everything on Redbubble is done by you, by hand, in the browser. ecom never signs in to Redbubble and has no password for it: ${RB_NOAPI}. ${RB_BOTS}
+
+Do this once. It takes about an hour, most of it cleaning up old works. If anything on the account looks wrong (a warning email, a restricted banner), stop and read it first: a restricted account is a different problem from a dormant one.
+
+Money facts you need: ${RB_PAY}. Markup: ${RB_MARKUP}.`,
+    steps: [
+      { id: 'login', title: 'Sign in at redbubble.com yourself; reset the password if needed; turn on two-step sign-in if offered', detail: 'Use a password manager entry for this account. Do not store the password in ecom.' },
+      { id: 'inbox', title: 'Read every Redbubble email from the last year (warnings, restrictions, policy changes) and any banner on the dashboard', detail: 'A warning or restriction must be resolved before you upload anything new.' },
+      { id: 'terms', title: 'Read the current Community and Content Guidelines and the User Agreement once, in your own browser', detail: `ecom could not read them (HTTP 403). The rule that matters most here: ${RB_BOTS}` },
+      { id: 'profile', title: 'Account settings: profile name, shop name, bio, avatar; bio says what you actually make (original designs), with no brand or third-party names' },
+      { id: 'banner', title: 'Shop banner / cover image: upload one that uses only your own artwork', detail: 'A simple banner made from one of your own designs is enough; improve it after the first sales.' },
+      { id: 'payment', title: 'Payment details: set the payout currency and PayPal (or the option offered), then confirm the PayPal account is fully set up', detail: `${RB_PAY}. Nothing is paid until you have earned $20 in a month.` },
+      { id: 'tax', title: 'Tax information: complete whatever tax or identity form the dashboard asks for (US person: a W-9 style form) and save it', detail: 'assumed, unverified: Redbubble\'s tax-form requirements were not found in searches; follow the prompts in your account. Income is yours to report; ask a tax adviser how, ecom NET is operational, not accounting.' },
+      { id: 'old-review', title: 'Open Manage Portfolio and list every old work: title, image, tags, whether it sold', detail: 'Write down which ones to keep, fix, or delete before touching anything.' },
+      { id: 'old-ip', title: 'For each old work: delete it if it uses anything you do not own (a brand, character, team, lyric, celebrity, a template you cannot license) or if you cannot say where every element came from', detail: 'Old works with an IP problem are the biggest risk to a revived account. When unsure, delete.' },
+      { id: 'old-fix', title: 'For works you keep: set markup to 20%, fix titles and tags, tick the AI checkbox if an AI tool made any part', detail: `${RB_MARKUP}. ${RB_AI}` },
+      { id: 'old-low', title: 'Delete or hide very low-quality works (blurry, tiny, no tags): they cost nothing to keep but drag the shop page down' },
+      { id: 'prefs', title: 'Turn on the email notifications you want (sales, messages, policy notices) and make sure the email address on the account is one you read', detail: 'The takedown playbook depends on you seeing these emails quickly.' },
+      { id: 'sandbox', title: 'Back in ecom: confirm the product you want to list first has a design, then open its Redbubble section and download the pack', detail: 'Next playbook: Publish a design to Redbubble.' },
+    ],
+  },
+  {
+    id: 'redbubble-publish',
+    title: 'Publish a design to Redbubble',
+    whenToUse: 'A product with a finished design should also be sold on Redbubble. ecom prepares the pack; you do the upload.',
+    background: `Open the product in ecom, scroll to "Redbubble", press "Download pack (zip)" (or use the folder view: every text field has a copy button). The pack holds: the PNG at Redbubble's recommended size (the real size is shown; an upscale adds pixels, not detail), title.txt, tags.txt, description.txt, markup.txt, product-types.txt and a checklist for this design.
+
+There is no upload API and bots are prohibited, so this is manual by design: ${RB_NOAPI}. ${RB_BOTS}
+
+Limits ecom lints against (all assumed, unless the upload form says otherwise): title 60 chars, 15 tags of up to 50 chars, description kept to 250 chars. Image: PNG, recommended 7632x6480 for large products, maximum 13500x13500 or 300 MB. Source pages: https://blog.redbubble.com/2018/05/uploading-on-redbubble/ and https://help.redbubble.com/hc/en-us/articles/360047166432 (both returned HTTP 403 to ecom). Markup: ${RB_MARKUP}`,
+    steps: [
+      { id: 'ready', title: 'The design is original, passed the blocklist, and the product carries no flags', detail: 'Same standard as Etsy: no brand, franchise, character, team, lyric or likeness.', check: 'no_flags' },
+      { id: 'pack', title: 'In ecom: product drawer > Redbubble > Download pack (zip). Read the Lint box: fix every error before uploading', detail: 'Errors are a title over 60 chars, more than 15 tags, a tag over 50 chars, a blocklist hit.' },
+      { id: 'size', title: 'Look at the image size line in the pack. If it says "upscaled", know that Redbubble will print it but fine detail will be soft; that is why large-format products are advised against', detail: 'The pack never claims more pixels than it has.' },
+      { id: 'open', title: 'Sign in to redbubble.com as the owner, open your dashboard, click Add new work', detail: 'The direct address ecom shows (https://www.redbubble.com/portfolio/images/new) is assumed; use the dashboard button if it differs.' },
+      { id: 'upload', title: 'Upload the PNG from the zip' },
+      { id: 'title', title: 'Paste the title from title.txt' },
+      { id: 'tags', title: 'Paste the main tag, then the supporting tags, from tags.txt', detail: 'One tag goes in the main tag field and the rest in supporting tags (assumed layout).' },
+      { id: 'desc', title: 'Paste the description from description.txt' },
+      { id: 'ai', title: 'Tick the AI-generated checkbox if any AI tool made any part of the design', detail: RB_AI },
+      { id: 'rights', title: 'Tick the originality / rights confirmation only because it is true' },
+      { id: 'products', title: 'Product types: turn OFF every type product-types.txt marks DISABLE; think about each CAUTION; leave ENABLE on', detail: 'Sizes per product are assumed from third-party guides; Redbubble scales and crops itself.' },
+      { id: 'markup', title: 'Set markup to the pack\'s figure (20%) for every product', detail: RB_MARKUP },
+      { id: 'save', title: 'Preview on a dark and a light product; then save/publish the work' },
+      { id: 'url', title: 'Open the live work, copy the address, paste it into ecom (Redbubble section), choose "Mark live"', detail: 'If Redbubble is still reviewing it, press "Mark uploaded" first and come back. ecom stores the URL and the work number so the sales import can match sales to this product.' },
+      { id: 'copy', title: 'Next design: use "Copy settings from existing work" in the upload form, replace the image, re-check title and tags', detail: 'assumed, unverified: a search summary says tags, markup and product settings carry over.' },
+    ],
+  },
+  {
+    id: 'redbubble-weekly',
+    title: 'Weekly Redbubble routine',
+    whenToUse: 'Once a week (15 minutes), starting the week after the first upload.',
+    background: `Redbubble's sales report is a CSV you request yourself, so the sales import is the one recurring manual task. ${RB_CSV}
+
+Because the column headers are unconfirmed, ecom shows a preview of how it read your file (which header it took for which field) before saving anything. If a column is not recognised, the preview says so; the fix is one line (an alias in server/channels/redbubble-sales.js), or use the manual entry form meanwhile.
+
+Money lands in ecom NET as the artist margin of each line, with no fees and no cost of goods (Redbubble bears production). Account fees and the excess markup fee are taken from payouts and are not modelled.`,
+    steps: [
+      { id: 'inbox', title: 'Check the Redbubble account email and dashboard for warnings, IP notices, or works put on hold', detail: 'If there is an IP notice, switch to the takedown playbook now, before anything else.' },
+      { id: 'csv', title: 'Redbubble: Sales History > request the CSV report (it also arrives by email each quarter); download it', detail: RB_CSV },
+      { id: 'preview', title: 'ecom: Sales > Redbubble > paste or choose the CSV > Preview. Check the "read as" mapping and the skipped lines', detail: 'Skipped lines are non-USD rows and unreadable rows. Enter those by hand.' },
+      { id: 'import', title: 'Import. Re-importing an overlapping file is safe: lines already known are ignored' },
+      { id: 'unmatched', title: 'Any lines "not matched to a product"? Open the product, check its Redbubble title/URL is recorded, and re-import, or enter the sale by hand against the product', detail: 'Matching uses the work number from the URL, then the title.' },
+      { id: 'compare', title: 'Compare the weekly numbers with the 30/60/90-day targets in the Game plan' },
+      { id: 'crosslist', title: 'Pick the next 2 to 5 designs to cross-list, from the Game plan criteria, and run the Publish playbook for each', detail: 'Products listed on Etsy but with Redbubble state "not listed" are the candidates.' },
+      { id: 'tags', title: 'For works with views but no sales after 30 days: fix the title and tags on Redbubble, one change at a time' },
+      { id: 'payout', title: 'Check the payout: payments start processing on the 15th once $20 is earned; note the amount in your own books', detail: RB_PAY },
+    ],
+  },
+  {
+    id: 'redbubble-takedown',
+    title: 'Redbubble takedown or IP notice received',
+    whenToUse: 'Redbubble emails that a work was removed, restricted, or reported for copyright, trademark or another policy problem.',
+    background: `Do not delete the evidence, do not argue by email in anger, and do not re-upload the same work. Repeated infringement claims can restrict or suspend an account: ${'assumed, unverified (search summary of https://help.redbubble.com/hc/en-us/articles/360051811312 and https://help.redbubble.com/hc/en-us/articles/360056437771)'}. Redbubble's process is modelled on the US DMCA notice-and-takedown process (assumed, unverified: search summary of https://itsartlaw.org/2024/03/13/the-redbubble-of-legal-protections-for-digital-art-marketplaces/).
+
+A counter notice: ${RB_COUNTER}. Only send one if you are sure the design is yours: a false counter notice has legal consequences. This is a checklist, not legal advice.`,
+    steps: [
+      { id: 'read', title: 'Read the whole notice: which work, who complained, which right (copyright, trademark, publicity), what Redbubble did, any deadline', detail: 'Screenshot the email and the work page for your records.' },
+      { id: 'mark', title: 'In ecom: set the product\'s Redbubble state to "removed" (product drawer > Redbubble)', detail: 'It leaves a dated note on the product.' },
+      { id: 'honest', title: 'Be honest about where the design came from: prompt, tool, any reference image, any text or name in it', detail: 'If you cannot say where every element came from, treat the complaint as correct.' },
+      { id: 'sweep', title: 'Check every other work for the same element: a name, a phrase, a style tied to a brand or person. Remove those on every channel, Etsy included' },
+      { id: 'etsy', title: 'Check the same product on Etsy. If it has the same problem, deactivate it there too and follow the Etsy IP playbook', detail: 'See "IP complaint" in the playbooks list.' },
+      { id: 'decide', title: 'Decide: accept the removal (default), or contest with a counter notice if you are certain', detail: RB_COUNTER },
+      { id: 'counter', title: 'If contesting: send the counter notice through the form Redbubble names in the notice; include your name, contact details, the work URL, why it was a mistake, and original-creation evidence (prompt history, source files, timestamps)', detail: 'ecom keeps the design prompt and timestamps in the product history; export them.' },
+      { id: 'block', title: 'Add the offending term to the ecom blocklist (Settings > Blocklist) so it cannot come back', detail: 'A hit only flags; you still approve.' },
+      { id: 'log', title: 'Write down what happened and what you changed; if you receive a second notice within months, stop listing new works until you understand the pattern' },
+    ],
+  },
+  {
+    id: 'redbubble-game-plan',
+    title: 'Redbubble game plan: what to cross-list, price, and expect',
+    whenToUse: 'Deciding which designs go to Redbubble first and what a good first three months looks like.',
+    background: `Why Redbubble: it has its own shoppers, which a zero-review Etsy shop does not. Why only a side channel: money per sale is small. Redbubble pays you the artist margin, which is your markup percentage of the base price; ${RB_MARKUP}.
+
+The numbers below are realistic planning figures, NOT forecasts and NOT sourced: a third-party blog (https://www.unil.ink/help-center/articles/how-to-sell-ai-art-2026) reported about $1 to $5 per sale to the artist, and most new works sell nothing for weeks. Treat them as assumed, unverified.
+
+Effort per design: about 15 to 20 minutes the first time, less with "Copy settings from existing work".
+
+PRICING: leave markup at 20%. Above that, 50% of the extra is taken, so a higher markup mostly raises the shelf price while barely raising your pay. If you want more per sale, make the shelf price your advantage elsewhere (better designs, more products), not by raising markup.
+
+WHICH DESIGNS FIRST (in this order):
+1. Evergreen over seasonal: a design that still sells in February (a hobby, a profession, a pet, a funny phrase). Seasonal designs need to be live well before the season; cross-list a Christmas design now or skip it until next year.
+2. Designs already live on Etsy, flag-free, with a transparent PNG and a real size of at least about 3000px on the short side. Stickers and tees are where small designs do best.
+3. Designs that work on many products (stickers, tees, mugs, totes) rather than one oddly shaped product like a ceramic ornament; products Redbubble does not make stay Etsy-only.
+4. Anything with a clear search phrase ("fishing is my love language"): Redbubble is search-driven, so the title and 15 tags matter more than the picture.
+5. Avoid: anything near a brand, any design that needs real detail at large-format sizes, anything you would not defend in a takedown email.
+
+WHAT SUCCESS LOOKS LIKE (assumed, unverified planning numbers):
+- Day 30: account revived, 10 to 15 designs live, 0 to 3 sales, $0 to $10 earned. Success = the routine works and nothing was flagged.
+- Day 60: 25 designs live, 2 to 10 sales, $5 to $30 earned. Success = you know which 3 designs get views, and you have added the best-performing themes in new variants.
+- Day 90: 40 designs live, 5 to 25 sales, $10 to $75 earned. Success = at least one payout (the $20 threshold, ${RB_PAY}), and a clear answer to "is Redbubble worth 2 hours a week?" Most likely answer: a small side income, not a replacement for Etsy.
+
+If day 60 has zero sales and almost no views: the problem is titles and tags, not volume. If views but no sales: price and product choice. If day 90 is still zero: stop adding designs, keep the existing ones up, and spend the time on Etsy.`,
+    steps: [
+      { id: 'shortlist', title: 'In ecom, list products live on Etsy with Redbubble state "not listed"; shortlist 10 that are evergreen and flag-free' },
+      { id: 'size', title: 'For each, open the Redbubble pack: keep those whose image size line is honest and whose product-types list has at least 3 ENABLE', detail: 'A design with few ENABLE types is a poor Redbubble candidate.' },
+      { id: 'tags', title: 'Read each pack\'s title and tags as a shopper would: would you search those words? Edit the Etsy copy and re-open the pack if not' },
+      { id: 'week1', title: 'Week 1: publish 3 designs (Publish playbook) and mark each live in ecom' },
+      { id: 'd30', title: 'Day 30 review: designs live, views, sales, earned; was anything flagged?', detail: 'Targets: 10 to 15 designs, 0 to 3 sales, $0 to $10 (assumed).' },
+      { id: 'd60', title: 'Day 60 review: which 3 designs get views? Make variants of those; retire none yet', detail: 'Targets: 25 designs, 2 to 10 sales, $5 to $30 (assumed).' },
+      { id: 'd90', title: 'Day 90 review: total earned vs hours spent; first payout reached?', detail: 'Targets: 40 designs, 5 to 25 sales, $10 to $75 (assumed).' },
+      { id: 'decide', title: 'Decide: keep, grow, or stop. Record the decision with the numbers' },
+    ],
+  },
 ];
 
 const byId = id => PLAYBOOKS.find(p => p.id === id) || null;
-module.exports = { PLAYBOOKS, byId, ETSY_POD, FTC, ETSY_IP };
+module.exports = { PLAYBOOKS, byId, ETSY_POD, FTC, ETSY_IP, RB_NOAPI, RB_BOTS };

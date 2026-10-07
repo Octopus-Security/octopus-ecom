@@ -384,6 +384,26 @@ events (`kind = 'system'`); `kind = 'note'` events belong to a product but are n
 - `docs/playbooks/*.md` are rendered from `server/playbooks/definitions.js`
   (`node server/playbooks/render-md.js`); a test fails if they drift.
 
+## Channels
+
+A **channel** is a place a product is sold, with a **capability flag**: `api` (ecom may publish and read sales itself: Etsy) or `manual`
+(ecom prepares, a human uploads, ecom tracks and imports: Redbubble). `server/channels/contract.js` defines the contract and
+`assertChannel`; `server/channels/index.js` is the registry and is built in `deps.js` as `deps.channels`. It is not a sixth adapter kind: adapters
+are HTTP interfaces behind `route.js` (and `/api/summary` lists exactly five), a channel is the operator-facing layer above them. Full model, the
+automated-versus-manual table, the Redbubble research (verified/assumed, with URLs) and how to add the next marketplace: `docs/CHANNELS.md`.
+
+- **State.** `channel_listings` (additive; `UNIQUE(product_id, channel)`): `not_listed -> uploaded -> live -> removed` (`channels/state.js`
+  `TRANSITIONS`). `live` needs a work URL on `redbubble.com` (https, host checked by suffix); the numeric work id is parsed from it and used to match sales.
+  A work id can sit on only one product. Etsy's state is derived from `products.stage`, never stored. Channel state never writes `products.stage`.
+  Every change leaves a note event. `GET /api/products` cards carry `channels`; `GET /api/products/:id` carries `channels` and `salesByChannel`.
+- **Pack.** `GET /api/products/:id/redbubble/pack` (JSON for the folder view), `/pack.zip` (PNG + text files + `pack.json`), `/design.png`. The PNG is the stored
+  design fitted inside 7632x6480 by the same `fitToArea` as uploads, cached under `DATA_DIR/channel-packs`; the size reported is read back from the file, and with no
+  upscaler configured the design is packed as is and says so. Copy comes from the Etsy listing through `domain/redbubble-rules.js` (`adaptCopy`, `lintCopy`,
+  `advise`), whose limits each carry a provenance string. The zip is written by `server/zip.js` (stored entries, no dependency).
+- **Sales.** `POST /api/sales/redbubble/import {csv, preview}` and `/entry`. New nullable-safe column `sales.channel` (default `etsy`); Redbubble lines are
+  `source = 'redbubble'`, gross = net = artist margin, no fees, `cogs_cents` NULL. `spend.summary()` adds `channels`. The CSV header names are assumed.
+- **No automation of Redbubble**, by decision: no login, browser driver or scraping, enforced by a test. Owner-only comes from `app.js` like every other route.
+
 ## Not yet built
 
 - Etsy's transaction/listing fee as API fields (not exposed; computed instead).
@@ -391,5 +411,6 @@ events (`kind = 'system'`); `kind = 'note'` events belong to a product but are n
 - The Etsy direct-create path (`createListing` is implemented but wired to no route: it needs taxonomy, shipping profile and images).
 - Writing an AI-disclosure sentence into listings or setting Etsy's AI/"Designed by" fields (see `docs/COMPLIANCE.md`).
 - Batch autopublish and the whole live Etsy/Printify path have never run against real accounts.
+- Redbubble is manual only: no upload automation (see `docs/CHANNELS.md`); its sales CSV headers are assumed until a real export is seen; account fees are not in NET. TeePublic and Printify Pop-Up Store channels are not built.
 - Printful (signature only), a real TrendResearch source, a visual (image) check for logos or likenesses.
 - Refund edge cases not verified against a real refunded order (fee treatment, partial statuses).

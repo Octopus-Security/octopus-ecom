@@ -210,6 +210,21 @@ function migrate(db) {
     created_at TEXT NOT NULL
   )`);
   db.exec('CREATE INDEX IF NOT EXISTS plan_messages_conv ON plan_messages(conversation_id, id)');
+  // Channels: sales are attributed to a channel, and manual channels keep per-product listing state. Additive only.
+  addColumn(db, 'sales', 'channel', "TEXT NOT NULL DEFAULT 'etsy'");             // etsy | redbubble | ...
+  db.exec(`CREATE TABLE IF NOT EXISTS channel_listings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id INTEGER NOT NULL REFERENCES products(id),
+    channel TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'not_listed',   -- not_listed | uploaded | live | removed (channels/state.js)
+    url TEXT,                                   -- the work URL the operator pasted back
+    work_id TEXT,                               -- numeric id parsed from the URL, when visible (matches sales CSV rows)
+    work_title TEXT,                            -- the title used on the channel (matches sales CSV rows)
+    uploaded_at TEXT, live_at TEXT,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    UNIQUE (product_id, channel)
+  )`);
+  db.exec('CREATE INDEX IF NOT EXISTS channel_listings_channel ON channel_listings(channel, state)');
   db.exec(`CREATE TABLE IF NOT EXISTS oauth_pending (
     state TEXT PRIMARY KEY, verifier_sealed TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL
   )`);

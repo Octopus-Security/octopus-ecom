@@ -40,6 +40,8 @@ credentials), connect Etsy, arm live writes (typed phrase), re-run "create POD p
 
 **Batches:** *Run batch* takes a niche and a count (max 25), proposes original concepts, and takes each product to PENDING_APPROVAL, then
 stops. It pauses when the daily spend cap is reached and survives a restart. **Blocklist** and the **print-readiness rule** are in Settings.
+**Channels:** Etsy is automatic (`api`); Redbubble is `manual`: ecom builds an upload pack (sized PNG, adapted and linted copy, markup, product types, checklist), tracks not listed / uploaded / live, and imports the Redbubble sales CSV into NET. See `docs/CHANNELS.md` and the `redbubble-*` playbooks.
+
 **Legal/policy assumptions** and what is not verified: `docs/COMPLIANCE.md`.
 
 ## Status
