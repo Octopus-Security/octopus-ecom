@@ -39,12 +39,16 @@ function main(env = process.env) {
   if (rec.interrupted || rec.ideating) console.log(`[batch] recovered after restart: ${rec.retried} retried, ${rec.failed} failed, ${rec.ideating} re-ideating`);
   const batchTick = setInterval(() => { try { deps.orchestrator.tick(); } catch (e) { console.warn(`[batch] tick failed: ${e.message}`); } }, 60_000);
   batchTick.unref();
+  // Weekly proposals digest: a no-op unless the owner turned it on in the Proposals tab (OFF by default). Never throws.
+  const proposalsTick = setInterval(() => { deps.proposals.weeklyTick(); }, 60 * 60 * 1000);
+  proposalsTick.unref();
+  setTimeout(() => { deps.proposals.weeklyTick(); }, 30_000).unref();
   let closing = false;
   const shutdown = (sig) => {
     if (closing) return; closing = true;
     console.log(`[ecom] ${sig}: stopping`);
     stopWatchers();
-    clearInterval(batchTick); deps.orchestrator.stop();
+    clearInterval(batchTick); clearInterval(proposalsTick); deps.orchestrator.stop();
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 5000).unref();
   };

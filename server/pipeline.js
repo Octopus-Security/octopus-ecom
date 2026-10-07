@@ -566,7 +566,7 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
     return { printReadiness: readiness, product: { ...p, keywords: kw(p), flags: parseFlags(p), pod_variant_ids: parse(p.pod_variant_ids, []), print_spec: parse(p.print_spec, null) }, mockups, economics: unitEconomics(p), designs, costs, costTotalCents: costs.reduce((a, c) => a + c.amountCents, 0), events, copy };
   }
 
-  return { checkPrint, printRule, addFlags, rescanBlocklist, create, generateDesign, manualDesignPrompt, attachDesign, draftCopy, editCopy, detail, validateInput, PipelineError, selectPod, createPodProduct, refreshMockups, draftListing, setPrice, submit, approve, reject, archive, marginPreview, applyMargin, exclusive, get, need, setFlag };
+  return { checkPrint, printRule, addFlags, rescanBlocklist, saveCopy, create, generateDesign, manualDesignPrompt, attachDesign, draftCopy, editCopy, detail, validateInput, PipelineError, selectPod, createPodProduct, refreshMockups, draftListing, setPrice, submit, approve, reject, archive, marginPreview, applyMargin, exclusive, get, need, setFlag };
 }
 
 module.exports = { makePipeline, PipelineError, PRINT_W, PRINT_H };

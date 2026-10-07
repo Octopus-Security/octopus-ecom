@@ -72,3 +72,13 @@ a.button { display: inline-block; font: inherit; padding: 6px 12px; border-radiu
 .chan-pack { border-left: 2px solid var(--line); padding-left: 10px; margin-top: 8px; }
 .rb-panel { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
 .rb-panel textarea { width: 100%; box-sizing: border-box; }
+
+/* Proposals */
+.pcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 30rem), 1fr)); gap: 12px; align-items: start; }
+.pcard { display: flex; flex-direction: column; gap: 6px; }
+.pcard.risk-blocked { border-color: var(--neg); } .pcard.risk-review { border-color: var(--warn); }
+.pgrid { display: grid; gap: 6px; }
+.pfield { display: flex; flex-direction: column; gap: 2px; } .pfield input, .pfield textarea, .pfield select { width: 100%; box-sizing: border-box; font: inherit; }
+.pgen { display: grid; gap: 8px; max-width: 46rem; margin: 8px 0; } .pgen label { display: flex; flex-direction: column; gap: 2px; } .pgen label.check, .check { flex-direction: row; align-items: center; gap: 6px; }
+.flag-bad { background: var(--neg); color: #fff; } .warn { color: var(--warn); }
+.pcard textarea[readonly] { width: 100%; box-sizing: border-box; font: inherit; }

@@ -80,6 +80,19 @@ export const api = {
   runBatch: (b) => call('POST', '/api/batch', b),
   cancelBatch: (id) => call('POST', `/api/batch/${id}/cancel`, {}),
   resumeBatch: (id) => call('POST', `/api/batch/${id}/resume`, {}),
+  // Proposals
+  proposals: (status) => call('GET', `/api/proposals${status ? `?status=${status}` : ''}`),
+  proposalsConfig: () => call('GET', '/api/proposals/config'),
+  proposalsDigest: () => call('GET', '/api/proposals/digest'),
+  runProposalsDigest: (b) => call('POST', '/api/proposals/digest', b || {}),
+  saveProposalsSettings: (b) => call('POST', '/api/proposals/settings', b),
+  generateProposals: (b) => call('POST', '/api/proposals/generate', b),
+  editProposal: (id, b) => call('PATCH', `/api/proposals/${id}`, b),
+  approveProposal: (id, b) => call('POST', `/api/proposals/${id}/approve`, b || {}),
+  rejectProposal: (id, reason) => call('POST', `/api/proposals/${id}/reject`, { reason }),
+  snoozeProposal: (id, until) => call('POST', `/api/proposals/${id}/snooze`, { until }),
+  unsnoozeProposal: (id) => call('POST', `/api/proposals/${id}/unsnooze`, {}),
+  regenerateProposal: (id) => call('POST', `/api/proposals/${id}/regenerate`, {}),
 };
 
 export const dollars = (cents) => (cents === null || cents === undefined ? '-' : `${cents < 0 ? '-' : ''}$${(Math.abs(cents) / 100).toFixed(2)}`);

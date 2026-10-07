@@ -99,6 +99,29 @@ Researched 2026-10-06; Redbubble's help, blog and terms pages all returned HTTP 
 - **Money and tax.** Redbubble pays the artist margin; account fees and any excess markup fee come off payouts and are not in NET. Tax-form requirements were not found; follow the account's prompts.
 
 
+## 8. Proposals (original ideas generated for the owner to review)
+
+**Proposals never derive from a specific competitor listing or image.** The generator is given only: the owner's typed seeds (themes, occasions,
+audiences), the owner's own watchlist terms and notes, trend signals that have passed `validateSignals` (a message and a severity, nothing else), and
+the owner's own earlier rejections. It has no access to, and no code path to fetch, another seller's title, tags, description, image, price or shop
+(a test greps the proposals code for network calls). The prompt tells the model it has none and must not imitate one, and it must refuse brands,
+characters, celebrities, team names, protected phrases and "inspired by <seller>". Do not paste a competitor's listing text into a seed: seeds are
+passed to the model as themes.
+
+| Claim | Status |
+|---|---|
+| Seeds, watchlist terms and every trend signal are checked against the trademark blocklist before use; a blocklisted seed refuses the whole generation (422). | Implemented and tested (text only: it cannot see a logo, a likeness, a misspelling or an unlisted name). |
+| Each proposal is checked three ways (blocklist over every field, a phrase tripwire for "inspired by" / "in the style of" / "fan art" / "official" / "parody of" and similar, the model's own originality self-check). A hit is dropped at generation, and cannot be approved if introduced by an edit. | Implemented and tested. The phrase list is a regular expression and misses paraphrase. A clean result is "nothing obvious", never "cleared". |
+| A proposal's Etsy limits (title 140, 13 tags of 20 characters) and Redbubble limits are enforced and linted by `etsy-rules.js` and `redbubble-rules.js`. | The limits carry those files' own provenance: assumed / corroborated, **not verified** against an official page. |
+| AI-generated designs must be disclosed on Etsy; Redbubble has an AI checkbox. | **Still the operator's job.** Proposals do not write an AI disclosure and do not tick any box (open question 1 above). The proposal description deliberately claims nothing about being handmade, official or licensed. |
+| Price and margin on a proposal are projections from the editable fee schedule and a catalog or assumed base cost. | **Estimates.** Printify exposes the real base cost only on a created product. The assumed per-type base costs are placeholders: assumed, unverified, not Printify prices. |
+| "List by" and "last realistic order" dates, and the "too late" flag. | Holiday dates are calendar rules. **The lead times (production 5, shipping 10, buffer 3, listing ramp 21 days) are assumed, unverified**: no Printify or carrier schedule was read. Replace them in the Proposals settings with the published schedules, and see the `seasonal-prep` playbook. Delivery promises in a listing need a reasonable basis (section 5). |
+| The weekly digest generates ideas on a timer. | OFF by default (`proposals_weekly_enabled`). It only creates pending proposals and spends model tokens under the daily cap (or on the owner's cortex account); it never approves, creates a product or publishes. |
+
+Approving a proposal creates a product in the IDEA stage and nothing else; every later gate (print readiness, flags, the human approval and its confirm,
+DRY_RUN) applies unchanged. Someone still has to look at the finished image before approval: the blocklist is text only.
+
+
 ## Open questions for the operator
 
 1. **AI disclosure on Etsy.** Secondary sources say AI-made designs must be disclosed in the listing, with "Designed by" and an AI checkbox. Read
