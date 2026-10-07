@@ -483,3 +483,7 @@ automated-versus-manual table, the Redbubble research (verified/assumed, with UR
 - Printful (signature only), a real TrendResearch source, a visual (image) check for logos or likenesses.
 - Refund edge cases not verified against a real refunded order (fee treatment, partial statuses).
 - Proposals: never run against a real model, a live Printify catalog or live trend sources (tested with a fake model and the stubs). The lead times behind "too late" are assumed, unverified defaults; the base cost on a proposal is an estimate; a clean originality check is "nothing obvious", not clearance (see `docs/COMPLIANCE.md` section 8).
+
+## Trends (added 2026-10-06)
+
+`server/trends/` and `server/adapters/trend/{season,wikipedia,etsy-market,csv-import}.js`. Sources write numbers to `trend_metrics` (validated by `trends/metrics.js`, whitelist and aggregate-only; see COMPLIANCE.md section 6); `trends/score.js` combines them per theme x product type into `trend_scores` (weights untested, one config object); `trends/report.js` builds the weekly report served at `/api/trends/*` and shown in the Trends tab. The existing `TrendSource` / `adapters.trend.suggest` interface is unchanged; `deps.trends.trendSource` is a network-free TrendSource over stored numbers, and a rebuild raises concise `trend_signal` alerts for the top scores. Network happens only in `trends.collect()` (manual, or the weekly run, which is OFF unless `trend_weekly_enabled=true`). Etsy market is off by default behind a confirm-gated switch. Tables are additive (`trends/schema.js`).

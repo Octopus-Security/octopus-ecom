@@ -107,7 +107,14 @@ function makeHttp({
     }
   }
 
-  return { request };
+  /** The local daily budget of a host: {perDay, used} (perDay null when the host has none). Read-only; lets a caller keep a reserve. */
+  function budget(host) {
+    const lim = hostLimits[host] && hostLimits[host].perDay;
+    const t = now();
+    return { perDay: lim || null, used: lim ? (dayLog.get(host) || []).filter(x => t - x < 86400000).length : 0 };
+  }
+
+  return { request, budget };
 }
 
 module.exports = { makeHttp, HttpError, parseRetryAfter };

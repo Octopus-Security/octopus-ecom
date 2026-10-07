@@ -23,6 +23,12 @@ const RB_CSV = 'assumed, unverified (search summary of https://help.redbubble.co
 const RB_COUNTER = 'assumed, unverified (search summary of https://help.redbubble.com/hc/en-us/articles/20181954084500-Counter-Notice-FAQ: a counter notice names you, gives contact details, the work URL, why the takedown was a mistake, and supporting evidence)';
 const RB_AI = 'assumed, unverified (a search summary says Redbubble has an AI-generated checkbox on upload; a different search could not find any AI wording in its Community and Content Guidelines; the upload form is the authority)';
 
+// Trend sources (researched 2026-10-06, octopus-vault/memory/ecom-trend-sources.md). Etsy's, Pinterest's and Google's own pages were largely
+// unreadable to the fetch tool, so everything below about those services is corroborated from search summaries at best, never confirmed.
+const TR_PINTEREST = 'assumed, unverified (Pinterest Trends at https://trends.pinterest.com is described as free for a person to use; its terms on automated access were not read, so ecom never touches it)';
+const TR_GOOGLE_API = 'corroborated only (announced 2025-07-24 at https://developers.google.com/search/blog/2025/07/trends-api; the page body was not delivered to the fetch tool, details come from a search-engine-news summary; whether it is still alpha-only on 2026-10-06 is unknown)';
+const TR_TERAPEAK = 'corroborated only (a summary of eBay making Terapeak free for Seller Hub sellers; eBay\'s own page was not read). It shows eBay sales only, so it is a cross-check, not our market';
+
 const PLAYBOOKS = [
   {
     id: 'launch-pod-etsy',
@@ -319,6 +325,31 @@ If day 60 has zero sales and almost no views: the problem is titles and tags, no
       { id: 'decide', title: 'Approve (or edit and approve), snooze, or reject; when you reject, write the reason, because the next batch is told what you did not like' },
       { id: 'pipeline', title: 'Approved proposals are IDEA cards: generate or upload the design, then continue through the normal pipeline and approval gate' },
       { id: 'backlog', title: 'Nothing left unreviewed for more than a week', check: 'proposals_reviewed' },
+    ],
+  },
+  {
+    id: 'weekly-trend-review',
+    title: 'Weekly trend review',
+    whenToUse: 'Once a week (about 20 minutes), ideally Monday after the automatic Trends report, before deciding what to design next.',
+    background: `The Trends tab ranks themes by an opportunity score built from sources that cost nothing and break no rules. Two things to hold onto: no source shows other sellers' sales, so every number is a proxy; and the weights behind the score are untested guesses until about 8 to 12 weeks of our own results exist. This list is the human half: the places a person may look but a program must not.
+
+- Pinterest Trends (website): ${TR_PINTEREST}.
+- Google Trends website and API alpha: ${TR_GOOGLE_API}.
+- Terapeak in eBay Seller Hub: ${TR_TERAPEAK}.
+- Do not automate any of these, and do not copy another seller's titles, tags or designs from what you see. Themes, keywords, product types and price bands only.`,
+    steps: [
+      { id: 'report', title: 'Open Trends, press Rebuild, read the note at the top and the per-source status line', detail: 'A source marked disabled, no data or error is a gap, not a zero. Low-confidence rows (small dot) are guesses.' },
+      { id: 'pinterest', title: 'Pinterest Trends (website, by hand): check your watchlist themes and the "growing" lists for your categories; enter anything useful under Trends > Manual entries', detail: TR_PINTEREST },
+      { id: 'google', title: 'Google Trends (website, by hand): compare 3 to 5 themes over 5 years to see their seasonality; type the direction into Manual entries', detail: 'A person using the website is fine; automating it (pytrends and similar scrapers) is not, and ecom does not do it.' },
+      { id: 'google-api', title: 'Google Trends API alpha: apply through the form linked from the 2025-07 Google developers announcement if you have not, and note the date you applied', detail: TR_GOOGLE_API },
+      { id: 'terapeak', title: 'Terapeak (eBay Seller Hub > Research), only if you also sell on eBay: look up one or two keywords for sold prices as a cross-check', detail: TR_TERAPEAK },
+      { id: 'redbubble', title: 'Redbubble and Amazon Merch: glance at the trending sort and popular searches yourself; enter themes (never listings) in Manual entries', detail: 'Their rules reportedly forbid bots (docs/CHANNELS.md); a person looking is fine.' },
+      { id: 'csv', title: 'If you pay for eRank, Alura or EverBee, export a keyword CSV and import it (Trends > CSV import > Preview > Import)', detail: 'The headers are assumed; read the preview mapping before importing. These are the tool\'s estimates, not Etsy data.' },
+      { id: 'blocklist', title: 'Check the blocklist section: a hot term removed for brand or franchise reasons stays removed', detail: 'Trends inform theme and keyword only. Never reproduce a competitor\'s design or listing.' },
+      { id: 'windows', title: 'Seasonal windows: for each window closing soon, decide design, list or skip, and write the last-order date where customers see it', detail: 'Last-order dates are estimates from our own lead-time table; replace them with this year\'s provider and carrier cut-offs (seasonal-prep playbook).' },
+      { id: 'gaps', title: 'Gaps: pick up to three high-score themes with nothing in the catalogue and start a small batch (3 to 5 designs) to test the hypothesis' },
+      { id: 'launches', title: 'Our launches: look at the score each launch had against its views and sales; note anything the score got badly wrong', detail: 'This is the data for re-fitting the weights after 8 to 12 weeks.' },
+      { id: 'etsy-terms', title: 'If the Etsy market source is still off: have you read Etsy\'s current API Terms and decided? Record the date and the answer in docs/COMPLIANCE.md', detail: 'assumed, unverified: the terms may require Etsy\'s authorisation for analytics use; search summaries suggest so, the page itself was not readable.' },
     ],
   },
 ];
