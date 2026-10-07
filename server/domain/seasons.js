@@ -15,8 +15,22 @@
  *   shippingDays   10   calendar days of standard US transit (assumed)
  *   bufferDays      3   slack for delays (assumed)
  *   rampDays       21   how long a new listing needs to be live before the season to be found (assumed)
+ *
+ * ONE SOURCE OF TRUTH FOR DATES (2026-10-06). The holiday dates and the calendar helpers (ET day, add/diff days, nth weekday,
+ * Easter) come from the trends feature: trends/season-table.js EVENTS[].peak(year) and trends/dates.js. This file only maps
+ * its own holiday ids to those events and keeps its exported signatures. Where the two disagreed the trends table won:
+ * New Year (Jan 1 -> Dec 31, the trends peak), Graduation (May 20 -> May 15), Back to school (Aug 20 -> Aug 15).
+ *
+ * TWO DIFFERENT "LEAD TIME" IDEAS, BOTH KEPT (they answer different questions; do not merge them):
+ *   - HERE (proposals): lastOrder = date - (production + shipping + buffer) = 18 days by default, the same for every product,
+ *     and listBy = lastOrder - rampDays (21) = "the latest day to START listing a NEW idea". Owner-editable (proposals_lead_time).
+ *   - TRENDS (adapters/trend/season.js): per PRODUCT TYPE, a listing WINDOW in weeks before the peak (tee/mug 6-14, sticker 4-10,
+ *     wall art 8-16: when a listing ranks best) and a LAST-ORDER lead in days (tee/mug 14, sticker 10, wall art 16).
+ *   Both are assumed, unverified planning figures. Do not compare a proposals lastOrder with a trends lastOrderBy for the same
+ *   holiday: the first is a conservative whole-shop figure, the second is per product type.
  */
-const DAY = 86400000;
+const TD = require('../trends/dates');
+const { EVENTS } = require('../trends/season-table');
 
 const DEFAULT_LEAD = Object.freeze({ productionDays: 5, shippingDays: 10, bufferDays: 3, rampDays: 21 });
 const LEAD_STATUS = 'assumed, unverified: planning defaults, not a Printify or carrier schedule';
@@ -29,43 +43,41 @@ const parseDay = (iso) => {
   if (new Date(t).toISOString().slice(0, 10) !== iso) throw new Error(`bad date "${iso}"`);
   return t;
 };
-const fmtDay = (t) => new Date(t).toISOString().slice(0, 10);
-const addDays = (iso, n) => fmtDay(parseDay(iso) + n * DAY);
-const diffDays = (a, b) => Math.round((parseDay(a) - parseDay(b)) / DAY); // a - b
+const addDays = (iso, n) => { parseDay(iso); return TD.addDays(iso, n); };
+const diffDays = (a, b) => { parseDay(a); parseDay(b); return TD.daysBetween(b, a); }; // a - b
 const isDay = (s) => { try { parseDay(s); return true; } catch { return false; } };
 
 /** ET calendar date. ET is the only clock. */
-const etToday = (now = new Date()) => now.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+const etToday = (now = new Date()) => TD.etDay(now);
 
-const iso = (y, m, d) => fmtDay(Date.UTC(y, m - 1, d));
-/** nth (1-based) given weekday (0 = Sunday) of a month (1-12). */
-function nthWeekday(y, m, wd, n) {
-  const first = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
-  return iso(y, m, 1 + ((wd - first + 7) % 7) + (n - 1) * 7);
-}
-/** Easter Sunday (anonymous Gregorian algorithm). */
-function easter(y) {
-  const a = y % 19; const b = Math.floor(y / 100); const c = y % 100; const d = Math.floor(b / 4); const e = b % 4; const f = Math.floor((b + 8) / 25);
-  const g = Math.floor((b - f + 1) / 3); const h = (19 * a + b - d - g + 15) % 30; const i = Math.floor(c / 4); const k = c % 4;
-  const l = (32 + 2 * e + 2 * i - h - k) % 7; const m = Math.floor((a + 11 * h + 22 * l) / 451);
-  const month = Math.floor((h + l - 7 * m + 114) / 31); const day = ((h + l - 7 * m + 114) % 31) + 1;
-  return iso(y, month, day);
-}
+const nthWeekday = TD.nthWeekday; // (year, month 1-12, weekday 0 = Sunday, n 1-based)
+const easter = TD.easter;
+/** This file's holiday id -> the trends event whose peak(year) supplies the date. */
+const EVENT_OF = Object.freeze({
+  'new-year': 'new-years', valentines: 'valentines-day', 'st-patricks': 'st-patricks-day', easter: 'easter', 'mothers-day': 'mothers-day',
+  graduation: 'graduation', 'fathers-day': 'fathers-day', 'independence-day': 'independence-day', 'back-to-school': 'back-to-school',
+  halloween: 'halloween', thanksgiving: 'thanksgiving', christmas: 'christmas',
+});
+const peakOf = (id) => {
+  const ev = EVENTS.find(e => e.id === EVENT_OF[id]);
+  if (!ev) throw new Error(`no trends event for holiday "${id}"`);
+  return ev.peak;
+};
 
 // `rule` maps a year to that year's date. `approx` marks a convention rather than a fixed day.
 const HOLIDAYS = Object.freeze([
-  { id: 'new-year', name: "New Year's Day", aliases: ['new year', 'new years'], rule: (y) => iso(y, 1, 1) },
-  { id: 'valentines', name: "Valentine's Day", aliases: ['valentine', 'valentines'], rule: (y) => iso(y, 2, 14) },
-  { id: 'st-patricks', name: "St. Patrick's Day", aliases: ['st patrick', 'st patricks', 'saint patrick', 'st paddys'], rule: (y) => iso(y, 3, 17) },
-  { id: 'easter', name: 'Easter', aliases: ['easter'], rule: easter },
-  { id: 'mothers-day', name: "Mother's Day", aliases: ['mother', 'mothers', 'mom', 'mama'], rule: (y) => nthWeekday(y, 5, 0, 2) },
-  { id: 'graduation', name: 'Graduation season', aliases: ['graduation', 'graduate', 'grad'], rule: (y) => iso(y, 5, 20), approx: true },
-  { id: 'fathers-day', name: "Father's Day", aliases: ['father', 'fathers', 'dad', 'papa'], rule: (y) => nthWeekday(y, 6, 0, 3) },
-  { id: 'independence-day', name: 'Independence Day (July 4)', aliases: ['july 4', 'fourth of july', '4th of july', 'independence day'], rule: (y) => iso(y, 7, 4) },
-  { id: 'back-to-school', name: 'Back to school', aliases: ['back to school'], rule: (y) => iso(y, 8, 20), approx: true },
-  { id: 'halloween', name: 'Halloween', aliases: ['halloween', 'spooky season'], rule: (y) => iso(y, 10, 31) },
-  { id: 'thanksgiving', name: 'Thanksgiving', aliases: ['thanksgiving', 'friendsgiving'], rule: (y) => nthWeekday(y, 11, 4, 4) },
-  { id: 'christmas', name: 'Christmas', aliases: ['christmas', 'xmas', 'holiday', 'holidays', 'festive'], rule: (y) => iso(y, 12, 25) },
+  { id: 'new-year', name: "New Year's", aliases: ['new year', 'new years'], rule: peakOf('new-year') },
+  { id: 'valentines', name: "Valentine's Day", aliases: ['valentine', 'valentines'], rule: peakOf('valentines') },
+  { id: 'st-patricks', name: "St. Patrick's Day", aliases: ['st patrick', 'st patricks', 'saint patrick', 'st paddys'], rule: peakOf('st-patricks') },
+  { id: 'easter', name: 'Easter', aliases: ['easter'], rule: peakOf('easter') },
+  { id: 'mothers-day', name: "Mother's Day", aliases: ['mother', 'mothers', 'mom', 'mama'], rule: peakOf('mothers-day') },
+  { id: 'graduation', name: 'Graduation season', aliases: ['graduation', 'graduate', 'grad'], rule: peakOf('graduation'), approx: true },
+  { id: 'fathers-day', name: "Father's Day", aliases: ['father', 'fathers', 'dad', 'papa'], rule: peakOf('fathers-day') },
+  { id: 'independence-day', name: 'Independence Day (July 4)', aliases: ['july 4', 'fourth of july', '4th of july', 'independence day'], rule: peakOf('independence-day') },
+  { id: 'back-to-school', name: 'Back to school', aliases: ['back to school'], rule: peakOf('back-to-school'), approx: true },
+  { id: 'halloween', name: 'Halloween', aliases: ['halloween', 'spooky season'], rule: peakOf('halloween') },
+  { id: 'thanksgiving', name: 'Thanksgiving', aliases: ['thanksgiving', 'friendsgiving'], rule: peakOf('thanksgiving') },
+  { id: 'christmas', name: 'Christmas', aliases: ['christmas', 'xmas', 'holiday', 'holidays', 'festive'], rule: peakOf('christmas') },
 ]);
 const byHoliday = (id) => HOLIDAYS.find(h => h.id === id) || null;
 

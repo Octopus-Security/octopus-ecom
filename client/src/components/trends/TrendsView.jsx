@@ -55,7 +55,7 @@ export default function TrendsView({ api }) {
         <div className="row">
           <button className="ghost" disabled={busy} onClick={() => act(() => api.rebuild(false))}>Recompute</button>
           <button disabled={busy} onClick={() => act(() => api.rebuild(true))}>Refresh data and rebuild</button>
-          {proposals && <button className="ghost" disabled={busy || !report.top.length} onClick={() => act(async () => { const r = await api.generateProposals(report); setInfo(`Proposals requested${r && r.count ? `: ${r.count}` : ''}.`); })}>Generate proposals from this</button>}
+          {proposals && <button className="ghost" disabled={busy || !report.top.length} onClick={() => act(async () => { const r = await api.generateProposals(report); setInfo(`Proposals created${r && r.proposals ? `: ${r.proposals.length}` : ''}. Open the Proposals tab to review them.`); })}>Generate proposals from this</button>}
         </div>
       </div>
       {error && <div className="banner error" role="alert">{error}</div>}

@@ -12,6 +12,22 @@ async function call(method, url, body) {
   return data;
 }
 
+// Trends names product types tee / mug / sticker / wall_art; Proposals names them tshirt / hoodie / mug / poster / sticker / tote.
+const TYPE_TO_PROPOSAL = { tee: 'tshirt', mug: 'mug', sticker: 'sticker', wall_art: 'poster' };
+
+/**
+ * The body POST /api/proposals/generate accepts, built from a report's top opportunities:
+ * {count, productTypes[], seeds:{themes[]}}. Each theme becomes a seed and each product type a filter. Blocked items are skipped
+ * (the server also refuses blocklisted seeds); count is the number of distinct theme x type pairs, capped at 20 (the server cap).
+ */
+export function proposalRequest(report) {
+  const items = ((report && report.top) || []).filter(t => t && t.theme && !t.blocked);
+  const themes = [...new Set(items.map(t => t.theme))];
+  const productTypes = [...new Set(items.map(t => TYPE_TO_PROPOSAL[t.productType]).filter(Boolean))];
+  const pairs = new Set(items.map(t => `${t.theme}|${t.productType}`));
+  return { count: Math.max(1, Math.min(20, pairs.size)), productTypes, seeds: { themes } };
+}
+
 export function makeTrendsApi(base = '/api/trends') {
   return {
     report: () => call('GET', `${base}/report`),
@@ -30,9 +46,6 @@ export function makeTrendsApi(base = '/api/trends') {
     deleteManual: (id) => call('DELETE', `${base}/manual/${id}`),
     // The Proposals feature lives on another branch. Feature-detect at runtime: the button exists only if the route does.
     proposalsAvailable: async () => { try { const r = await fetch('/api/proposals', { credentials: 'same-origin' }); return r.ok; } catch { return false; } },
-    generateProposals: (report) => call('POST', '/api/proposals/generate', {
-      from: 'trend-report', week: report.week,
-      opportunities: report.top.map(t => ({ theme: t.theme, productType: t.productType, score: t.score, confidence: t.confidenceLevel })),
-    }),
+    generateProposals: (report) => call('POST', '/api/proposals/generate', proposalRequest(report)),
   };
 }

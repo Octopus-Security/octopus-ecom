@@ -56,7 +56,7 @@ const FIELDS = [
 const toDb = (v, kind) => (kind === 'json' ? JSON.stringify(v === undefined ? null : v) : kind === 'bool' ? (v ? 1 : 0) : v === undefined ? null : v);
 const fromDb = (v, kind) => (kind === 'json' ? parse(v, null) : kind === 'bool' ? !!v : v);
 
-function makeProposals({ db, settings, spend, llm, adapters, pipeline, confirm, watch = null, cfg = null, log = console, now = () => new Date() }) {
+function makeProposals({ db, settings, spend, llm, adapters, pipeline, confirm, watch = null, trends = null, cfg = null, log = console, now = () => new Date() }) {
   const today = () => seasons.etToday(now());
 
   // ---- settings --------------------------------------------------------------------------------------------------------------
@@ -128,6 +128,22 @@ function makeProposals({ db, settings, spend, llm, adapters, pipeline, confirm, 
         push({ source: 'trend-signal', kind: 'keyword', term: clean(m ? m[1] : safe.message.slice(0, 60), 60), message: clean(safe.message, 300), severity: safe.severity });
       }
     } catch { /* no alerts table or a malformed row: no signals from there */ }
+
+    // Stored opportunity scores from the Trends feature, when it exists: read-only, no network. The top non-blocked theme x type
+    // pairs become {message, severity} signals. A pair the trends feature already raised as a trend_signal alert (read above, and
+    // stored as "<theme>: <type> score ...") is skipped, so the same idea is never listed twice.
+    if (trends && typeof trends.opportunities === 'function') {
+      try {
+        const raised = new Set();
+        for (const sg of signals) { const m = sg.source === 'trend-signal' && /^(\S+) score\b/.exec(sg.message || ''); if (m) raised.add(`${sg.term.toLowerCase()}|${m[1]}`); }
+        const opp = trends.opportunities({ limit: 10 });
+        for (const o of (opp && opp.items) || []) {
+          if (!o || o.blocked || !o.theme || raised.has(`${String(o.theme).toLowerCase()}|${o.productType}`)) continue;
+          const [safe] = validateSignals([{ message: `${o.theme}: ${o.productType} opportunity score ${Math.round(o.score)}${o.confidenceLevel ? `, confidence ${o.confidenceLevel}` : ''}`, severity: 'info' }]);
+          if (safe) push({ source: 'trend-opportunity', kind: 'keyword', term: clean(o.theme, 60), message: clean(safe.message, 300), severity: safe.severity });
+        }
+      } catch (err) { notes.push(`trend opportunities unavailable: ${clean(err.message, 120)}`); }
+    }
 
     if (liveSignals) {
       const sources = watch && (watch.trendSources || (watch.trendSource ? [watch.trendSource] : []));

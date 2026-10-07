@@ -60,7 +60,7 @@ function createDeps(cfg, opts = {}) {
   const orchestrator = makeOrchestrator({ db, pipeline, stages, adapters, llm, spend, settings, publisher, dryRun, cfg, log, now: opts.nowDate });
   const trends = makeTrends({ db, settings, http, etsyAuth, env, log, now: opts.trendNow });
   const watch = makeWatchService({ db, settings, adapters, log, env, trendSource: trends.trendSource, hooks: { reconcile: () => publisher.reconcileAll({ actor: 'agent' }), syncSales: () => sales.sync({ actor: 'agent', auto: true }) } });
-  const proposals = makeProposals({ db, settings, spend, llm, adapters, pipeline, confirm, watch, cfg, log, now: opts.nowDate });
+  const proposals = makeProposals({ db, settings, spend, llm, adapters, pipeline, confirm, watch, trends, cfg, log, now: opts.nowDate });
   return { trends, proposals, channels, orchestrator, etsyAuth, etsy, publisher, sales, watch, pipeline, http, cfg, db, keystore, credentials, redactor, log, settings, confirm, dryRun, spend, stages, auth, llm, adapters };
 }
 
