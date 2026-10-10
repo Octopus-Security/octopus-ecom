@@ -27,6 +27,8 @@ npm test     # node:test, no network, no keys
 
 Operator playbooks (checklists for margin drops, stock-outs, etc.) live in `docs/playbooks/`; they are generated from `server/playbooks/definitions.js`.
 
+Online income, including the shop, the blog's separate checklist, and the YouTube niches, is mapped in `docs/INCOME.md`. The content playbooks (`estate-income-order`, `faceless-story-channel`, `produce-one-video`, `youtube-niche-channels`, `niche-shop-traffic`, `niche-explainers`, `niche-shorts`, `niche-digital-kit`, `weekly-content`) are the operating checklists. Video files stay outside this repo, under `~/octopus-content/`, because pushing `main` deploys the shop.
+
 ## First run, end to end (no keys)
 
 1. `npm install && npm start`, open http://127.0.0.1:3050. The top bar shows **DRY RUN: ON**.

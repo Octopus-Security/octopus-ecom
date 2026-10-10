@@ -17,3 +17,12 @@
 - [Redbubble game plan: what to cross-list, price, and expect](redbubble-game-plan.md): Deciding which designs go to Redbubble first and what a good first three months looks like.
 - [Weekly proposals review](weekly-proposals.md): Once a week, or whenever the Proposals tab has new cards: decide what becomes a product, what waits, and what the next batch should avoid.
 - [Weekly trend review](weekly-trend-review.md): Once a week (about 20 minutes), ideally Monday after the automatic Trends report, before deciding what to design next.
+- [Estate income order: what can pay, and in what order](estate-income-order.md): You are choosing this week's work so the estate earns before a new channel can.
+- [Faceless story channel: original fiction, footage you own](faceless-story-channel.md): You want the long-form channel people describe as gameplay under a narrated story, and you want it eligible to monetize.
+- [Produce one video: folders, rights, upload](produce-one-video.md): A script is ready and you are making the file you will upload.
+- [YouTube channels: one account, one niche each](youtube-niche-channels.md): You are opening the shop channel, the story channel, or a later niche.
+- [Shop-traffic videos that sell a live listing](niche-shop-traffic.md): A product is live, or will be today, and you are making the video whose job is the sale.
+- [Explainer channel: one topic you can teach](niche-explainers.md): The shop channel and the story channel each have four public videos, and you are opening one teaching channel.
+- [Shorts cut from a video you made](niche-shorts.md): A long video you are willing to sign is exported, and you are cutting one Short from it.
+- [Package a niche kit and sell it by hand](niche-digital-kit.md): You are turning a playbook into a file someone else can buy.
+- [Weekly content and money review](weekly-content.md): At least one channel has a public video. Once a week, about an hour.

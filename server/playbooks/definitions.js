@@ -29,6 +29,12 @@ const TR_PINTEREST = 'assumed, unverified (Pinterest Trends at https://trends.pi
 const TR_GOOGLE_API = 'corroborated only (announced 2025-07-24 at https://developers.google.com/search/blog/2025/07/trends-api; the page body was not delivered to the fetch tool, details come from a search-engine-news summary; whether it is still alpha-only on 2026-10-06 is unknown)';
 const TR_TERAPEAK = 'corroborated only (a summary of eBay making Terapeak free for Seller Hub sellers; eBay\'s own page was not read). It shows eBay sales only, so it is a cross-check, not our market';
 
+// YouTube pages read 2026-10-10. Keep the phrase `verified <date> - https://` tight: a test rejects any other use of that word.
+const YT_POLICY = 'verified 2026-10-10 - https://support.google.com/youtube/answer/1311392';
+const YT_YPP = 'verified 2026-10-10 - https://www.youtube.com/creators/partner-program/';
+const YT_CHANNEL = 'verified 2026-10-10 - https://support.google.com/youtube/answer/1646861';
+const YT_2027 = 'assumed, unverified (a 2026-08-10 news report, https://www.theverge.com/streaming/977474/youtube-partner-program-new-requirements, said that from 2027-02-01 new applicants would need 8,000 watch hours or 20 million Shorts views, and that people already in the program stay on the old entry bar if they accept new terms by 2027-01-31; the creators page read on 2026-10-10 still lists 4,000 hours and 10 million Shorts views, so follow the creators page until you have read YouTube\'s own notice)';
+
 const PLAYBOOKS = [
   {
     id: 'launch-pod-etsy',
@@ -350,6 +356,302 @@ If day 60 has zero sales and almost no views: the problem is titles and tags, no
       { id: 'gaps', title: 'Gaps: pick up to three high-score themes with nothing in the catalogue and start a small batch (3 to 5 designs) to test the hypothesis' },
       { id: 'launches', title: 'Our launches: look at the score each launch had against its views and sales; note anything the score got badly wrong', detail: 'This is the data for re-fitting the weights after 8 to 12 weeks.' },
       { id: 'etsy-terms', title: 'If the Etsy market source is still off: have you read Etsy\'s current API Terms and decided? Record the date and the answer in docs/COMPLIANCE.md', detail: 'assumed, unverified: the terms may require Etsy\'s authorisation for analytics use; search summaries suggest so, the page itself was not readable.' },
+    ],
+  },
+  {
+    id: 'estate-income-order',
+    title: 'Estate income order: what can pay, and in what order',
+    whenToUse: 'You are choosing this week\'s work so the estate earns before a new channel can.',
+    background: `A million dollars here means cumulative profit from a stack. It is not a payout from one faceless channel, and it is not a 90-day plan. The 90-day plan is ten shop sales, one repeatable video, one kit with a price, and a written answer to which of those three is worth next month's hours.
+
+WHAT CAN PAY, IN THIS ORDER
+1. The shop. This app already drafts original print-on-demand products and can publish to Etsy after keys are in and live writes are armed. That live path has never been run. One listing that can take money beats a folder of unmade videos. Redbubble is the same artwork, uploaded by you, and pays less per sale. Use launch-pod-etsy and redbubble-game-plan.
+2. The blog, if it is public. The copy of octopus-blog/MONETIZATION.md in this checkout says an Amazon Associates account is open, the 180-day / 3-sale clock is running, and the associate tag is still a placeholder. Display ads want posts first. That checklist belongs to the blog, not to this app. Re-read the file if that checkout has since moved.
+3. Shop traffic from video. A YouTube channel does not need the Partner Program to send a buyer to a listing. The link goes in the description the day the listing is live. Ad revenue comes later.
+4. A digital kit. The niche playbooks are something you can sell: a written operating kit, mostly margin, no watch-hour gate. This app does not deliver digital files (ARCHITECTURE.md, not yet built). You sell a cleaned export by hand. See niche-digital-kit.
+5. YouTube ads. Thresholds are below. A new channel does not pay rent this month. Treat ads as the back catalog's paycheck.
+
+PLANNING ARITHMETIC, NOT A FORECAST (assumed, unverified)
+Divide 1,000,000 by the NET on a real shop sale once you have one. If that NET were $8, you would need 125,000 sales. Use your number.
+Story-channel ad rates are commonly talked about as a few dollars per thousand views. That band is not your rate. At $4 per thousand, which you should not budget, a million dollars of ad revenue is 250 million views.
+A written kit listed in the tens of dollars needs tens of thousands of sales to reach the same million, but each sale is mostly margin and does not wait on watch hours. Someone still has to find the listing.
+
+DO NOT OPEN WITH
+- A ripped game, or a video model told to recreate one. The story bed is that moving-background style, built as your own design or as clips that follow the beats. See faceless-story-channel. A channel that reads other people's website posts under one loop is the pattern YouTube's monetization policy refuses.
+- A second Google account to replace a banned or demonetized channel. ${YT_POLICY} says not to create new channels to get around those restrictions, and that doing so can terminate all of them.
+- Bought views or subscribers. Same page, under creator integrity.
+- An AI persona giving financial, legal, or medical advice. Same page: those channels are not allowed to monetize.
+
+THIS MONTH
+Week 1: one original product through the Etsy launch playbook as far as dry-run. Do not arm live writes until you mean to take a buyer's money.
+Week 2: if dry-run looks right, arm, publish one, cross-list it on Redbubble by hand.
+Week 3: open two YouTube channels only (shop, then story). Write four original stories. Produce one video. Upload it only with rights.txt filled in.
+Week 4: if the listing is live, the video links to it. Export the story kit and write a price. Record hours and dollars, including zeroes.`,
+    steps: [
+      { id: 'read-order', title: 'Read docs/INCOME.md once. It is the map. This checklist is the order' },
+      { id: 'shop', title: 'Take one original product through the Etsy launch playbook as far as dry-run, and write down the projected margin' },
+      { id: 'arm', title: 'Arm live writes only when you intend a real charge, publish that one product, and add the AI disclosure and Designed-by line yourself', detail: 'The app does not write those fields. See docs/COMPLIANCE.md.' },
+      { id: 'redbubble', title: 'Cross-list that design with the Redbubble publish playbook' },
+      { id: 'blog', title: 'Open octopus-blog/MONETIZATION.md and do the one open item that the clock is running on', detail: 'In this checkout that item is the real Associates tag, and then traffic to buyer posts. Confirm the file still says that.' },
+      { id: 'channels', title: 'Open the shop channel and the story channel. Do not open the explainer channel yet', detail: 'youtube-niche-channels playbook.' },
+      { id: 'one-video', title: 'Produce one story video. Do not upload it with a blank rights.txt', detail: 'produce-one-video playbook.' },
+      { id: 'link', title: 'When a listing URL exists, put it in that video\'s description. Do not link an empty shop' },
+      { id: 'kit', title: 'Run the digital-kit playbook far enough to have a cleaned folder and a price written down' },
+      { id: 'review', title: 'At day 30 write shop sales, whether a video is public, whether a kit is listed, and hours spent. Keep the winner and stop the loser' },
+    ],
+  },
+  {
+    id: 'faceless-story-channel',
+    title: 'Faceless story channel: original fiction, footage you own',
+    whenToUse: 'You want the long-form channel people describe as gameplay under a narrated story, and you want it eligible to monetize.',
+    background: `The format is one voice telling one story, captions, and motion on screen, in a video long enough to sit with (a 2,000 to 4,000 word script is a planning range for roughly 15 to 30 minutes; pace is assumed, unverified). The style people mean is a picture that keeps moving while the story is told: a side view, a character or a camera travelling through a place, the way an endless runner feels. The picture changes when the story changes. That bed is yours. It is not a recording of someone else's game.
+
+THE PICTURES, TWO WAYS.
+1. An original design you animate. One character you drew or generated, and a handful of places, panned or looped in short stretches. The character can recur. The places follow this story.
+2. A video model, one clip per beat. beats.md carries a prompt for that stretch: where they are, what moves, the mood, in your own words. Generate the clip, put it in footage/, and write the model name and the prompt in rights.txt. This shop's image generator makes print designs. It does not make these clips. Use a video model whose terms you have read and that allow ads. Which product that is, is assumed, unverified until you read the terms of the one you pick.
+
+Do not feed a model a frame from Subway Surfers or any other commercial game, and do not name that game, its characters, or its interface in the prompt. A lookalike can draw the same strike as a rip.
+
+COPYRIGHT. There is no step in this playbook for downloading gameplay. A commercial game's footage is not yours, and neither is another creator's recording of it.
+
+MONETIZATION. ${YT_POLICY}
+- Reused content includes readings of materials you did not create, and the page gives text from websites or news feeds as the example. A channel that is Reddit posts read aloud is that example. The same page says the reused-content rule applies even when you have permission from the original creator.
+- Repetitive content includes templated storylines, minimal variation from video to video, and AI output from a generic template with none of your own perspective.
+- The same page allows a character and narrative you invented, and AI used to make a background that belongs to that narrative. A shared intro is fine. The episode has to be a different story.
+
+So the channel is original fiction in the shape viewers already sit through: one person, one mess, a turn, an ending. You may read public posts to learn which situations people finish. You may not read the post on the video. Same rule this shop uses for other sellers: themes, not the work.
+
+VARIATION. Each video needs its own plot, its own scene list, and pictures that follow the scenes. One identical loop under every upload is a template, whether you drew it or a model did. A recurring character is fine. Quiet stretches can reuse a short loop you made. The places and the generated beats change with the plot. The same page that allows a background a model made for a narrative you invented still refuses a generic template with no change from video to video. ${YT_POLICY}
+
+RIGHTS, BEFORE UPLOAD. ~/octopus-content/story/<yyyy-mm-dd-slug>/rights.txt names the script (you, or a person you paid), the voice (yours, or a commercial license that covers ads), the music (YouTube's audio library or a license), and every clip. A line that says "found online" means you do not upload.
+
+ADS, WHEN. ${YT_YPP}
+- Fan funding, shopping, gifts, supers, memberships, partnerships: 500 subscribers, 3 public uploads in 90 days, and either 3,000 long-form watch hours in 365 days or 3 million Shorts views in 90 days.
+- Ads and YouTube Premium revenue: 1,000 subscribers, and either 4,000 long-form watch hours in 365 days or 10 million Shorts views in 90 days.
+Shorts watch time does not count toward the 4,000 hours. Meeting the number does not admit you; the channel is reviewed, and the creators page says that review is often about a month. ${YT_2027}
+Until those ads exist, the description can sell a live shop listing and, later, the kit.
+
+WHERE A NEW TOOL GOES. Your money tools stay private. A new process gets its own repo, its own secret, and a hub.json with "access": "private" and its own subdomain. It does not share a process with the Discord bot, a shell, or anyone else's keys. The Discord bot in cortex is already the owner remote: it answers only DISCORD_USER_ID, and the public image strips it. A command that spends money or changes a stack stays behind the bot's existing 2FA list. Other people's access waits until you are being paid and you say so. No public content app in this pass.
+
+CADENCE. Two long videos a week is enough to learn. One a day of the same shape is the mass-production pattern. If you cannot summarize the plot in two sentences that would not describe last week's video, do not record it.
+
+BOUNDARY. Stories only. No financial, legal, or health advice, and no AI face playing an expert. Characters are fictional. A real private person's name does not go in. Public figures and real crimes are a defamation problem; leave them out.`,
+    steps: [
+      { id: 'name', title: 'Pick a name and handle that say fiction, not Reddit and not a game. Create the channel with the niche-channels playbook' },
+      { id: 'folder', title: 'Create ~/octopus-content/story and one folder per video named yyyy-mm-dd-slug' },
+      { id: 'library', title: 'Choose the bed: an original character and places you animate, or a video model with one prompt per beat', detail: 'Log each clip in ~/octopus-content/story/library/RIGHTS.md with the file, the model or "I made this", and the prompt. Do not rip a game, and do not name a commercial game or its characters in a prompt.' },
+      { id: 'four', title: 'Write four scripts that do not share a plot. First person, a start, a turn, an ending. Save each as script.md', detail: '2,000 to 4,000 words is a planning range, assumed, unverified as a runtime.' },
+      { id: 'beats', title: 'For each script write beats.md: every 20 to 40 seconds, the place, the motion, and the prompt or the library clip. Two videos do not share an order' },
+      { id: 'pilot', title: 'Produce video one with the produce-one-video playbook. Upload only after rights.txt is complete' },
+      { id: 'cadence', title: 'Publish at most two a week for four weeks. If you cannot hold that, fix the bottleneck before you add volume' },
+      { id: 'shop', title: 'When a listing is live, one sentence and the URL in the description. The story still has to stand if the link is ignored' },
+      { id: 'ypp', title: 'Apply from Studio\'s Earn page only when that page says you meet a threshold, and only if the new videos are still original stories', detail: YT_YPP },
+      { id: 'kill', title: 'If a video is a reading of someone else\'s post, or one loop with no scene changes, unlist it before you apply', detail: `A review looks at the channel, not only the newest upload. ${YT_POLICY}` },
+    ],
+  },
+  {
+    id: 'produce-one-video',
+    title: 'Produce one video: folders, rights, upload',
+    whenToUse: 'A script is ready and you are making the file you will upload.',
+    background: `Video files do not go in this repo. Pushing main deploys the shop.
+
+PATH. ~/octopus-content/<channel>/<yyyy-mm-dd-slug>/
+- script.md, the words that are spoken and nothing else
+- beats.md, time ranges, what is on screen, and the prompt if a model made the clip
+- voice.wav, the narration
+- captions.srt, the same words as the voice
+- footage/, clips already named in the library rights file
+- project/, the editor project. CapCut, DaVinci, or whatever you already use. This app does not drive it and does not upload
+- thumbnail.png, 1280x720, a moment from the story or the product. No game logo
+- upload.txt, title, description, tags, shop URL or the word NONE, and whether the voice or a face is synthetic
+- rights.txt, script, voice, music, footage, each with a source
+
+Export 1920x1080, or 2560x1440 if the export is cheap for you. A 9:16 Short is cut later from this master (niche-shorts), not a second shoot.
+
+VOICE. Your own voice is the simplest license. A synthetic voice needs a commercial license that covers advertising, and the altered-or-synthetic control on the upload form set to match. The control's exact label is assumed, unverified; read the form in front of you. Do not clone a voice that is not yours.
+
+MUSIC. YouTube's audio library, or a track whose license you can paste into rights.txt. No commercial songs and no sped-up copies of them.
+
+PICTURE. Cut on the beats. Captions on. The conflict is in the first 15 seconds, then the story. The bed keeps moving, and it changes when the story changes: a new place, a new action, a new generated clip. Do not open on silent footage. A loop with no words is the reused-footage case, not a story. A generated clip's prompt names the place and the motion in your own words. It does not name a commercial game or describe that game's characters. The model name and the prompt go in rights.txt. This shop does not generate the clip for you.
+
+TITLE. Name the situation. Do not put "Reddit" in it and do not put a game's name in it. The game's name is a trademark you do not own, and it promises a video you are not making.`,
+    steps: [
+      { id: 'folder', title: 'Create the slug folder and an empty rights.txt before you record' },
+      { id: 'script', title: 'Read script.md aloud once, cut any sentence that only stalls, and confirm you wrote it or paid for it' },
+      { id: 'voice', title: 'Record or render voice.wav. If the voice is synthetic, write the product name and the license in rights.txt' },
+      { id: 'beats', title: 'Lock beats.md so every 30 seconds names a picture. No stretch longer than 45 seconds on one unchanged loop' },
+      { id: 'edit', title: 'Edit in project/, export, watch the export once at 1.5x, and fix the one dead stretch' },
+      { id: 'captions', title: 'captions.srt matches the voice. Burn them in or upload the sidecar. They exist either way' },
+      { id: 'thumb', title: 'thumbnail.png is a story moment or the product, plus the title\'s key words. No game logo, no celebrity face' },
+      { id: 'upload-txt', title: 'Write upload.txt: title, two-sentence description, shop URL or NONE, situation tags rather than brand tags, synthetic yes or no', detail: 'Title length limits change. If Studio warns, shorten it. assumed, unverified that 70 characters is still a safe planning cap.' },
+      { id: 'rights', title: 'rights.txt has no blank source. If one is blank, do not upload' },
+      { id: 'upload', title: 'Upload yourself in Studio on the correct channel, set the disclosure to match upload.txt, and paste the video URL back into upload.txt' },
+    ],
+  },
+  {
+    id: 'youtube-niche-channels',
+    title: 'YouTube channels: one account, one niche each',
+    whenToUse: 'You are opening the shop channel, the story channel, or a later niche.',
+    background: `One Google account, a separate channel per niche, each with its own name. ${YT_CHANNEL} A personal channel is created from Settings, then Add or manage channels. A channel under a business or other name is created from the channel list (https://www.youtube.com/channel_switcher) and that flow creates a Brand Account, which can have more than one manager. Use the Brand Account path so the shop name is the channel name, not your personal name.
+
+OPEN IN THIS ORDER
+1. Shop. The name is the shop, or a plain design name you can say. Its job is to show real products and send people to a listing. Playbook: niche-shop-traffic. This one can earn before any ad program.
+2. Story. Fiction only. Playbook: faceless-story-channel.
+3. Explainer. One topic you can teach without pretending to be a lawyer, a doctor, or a financial adviser. Playbook: niche-explainers. Open it only after the first two channels have four public videos each. A third empty channel splits the week.
+4. No fourth channel until one of the three has either sales or a month of work you would repeat.
+
+A different niche means a different promise in About. Shop: designs you made, and where to get them. Story: original short fiction. Explainer: the topic sentence. If two channels would accept the same upload, they are one channel. Copying one template onto several channels is the mass-production case. ${YT_POLICY} says a new channel opened to get around a demonetization or a termination can cost you every channel.
+
+ACCOUNT. Use the Google account you already control. Turn on two-step verification before you apply to the partner program; the creators page lists it as a requirement. ${YT_YPP} A second Google account is for a real second person, not a spare in case of a strike. Passwords stay in the password manager. They do not go in this app, in a playbook, or in ~/octopus-content.
+
+ABOUT. Say who makes the videos. Story says the stories are fiction. Do not write that you read Reddit. Do not put a game title in the name or the banner. Banners use art you own.`,
+    steps: [
+      { id: 'login', title: 'Sign in to the Google account you will keep, and confirm two-step verification is on', detail: YT_YPP },
+      { id: 'shop-ch', title: 'From the channel list, create the shop channel as a Brand Account: shop name, handle, a picture you own', detail: YT_CHANNEL },
+      { id: 'story-ch', title: 'Create the story channel the same way, with a different name and handle' },
+      { id: 'about', title: 'Write both About boxes. Shop names the shop. Story says original fiction' },
+      { id: 'banner', title: 'Banners use your own art or a still you made. No game screenshot and no trademark' },
+      { id: 'switcher', title: 'Use the channel switcher once before the first upload, so a story does not land on the shop channel' },
+      { id: 'later', title: 'Leave the explainer channel until shop and story each have four public videos' },
+      { id: 'strike', title: 'If any channel is demonetized or terminated, stop and read the notice. Do not open a replacement', detail: YT_POLICY },
+      { id: 'record', title: 'Write the channel URLs in ~/octopus-content/CHANNELS.md. Nothing else about the Google account' },
+    ],
+  },
+  {
+    id: 'niche-shop-traffic',
+    title: 'Shop-traffic videos that sell a live listing',
+    whenToUse: 'A product is live, or will be today, and you are making the video whose job is the sale.',
+    background: `This channel earns by sending a buyer to a listing. A view that buys is worth more than a view that might pay ad rates in a year. The partner-program rules still apply once you want ads: the videos have to be yours, and they have to differ. ${YT_YPP}
+
+ONE VIDEO, ONE PRODUCT. Show the design large in the first three seconds, say who it is for, show it on the real product type, say that you designed it and a print partner makes it, and put the listing URL in the first line of the description and in the pinned comment. If the listing is not live, do not publish the video.
+
+DO NOT
+- Use a brand, team, character, or lyric in the design or the title. Same bar as the Etsy launch playbook.
+- Call it handmade by you when a partner prints it.
+- Stuff the title with a game name or any unrelated viral words. That brings a viewer who will not buy, and misleading metadata is a community-guidelines problem.
+- Read a script that would fit any product. Name this design.
+
+CADENCE. One video per design you will stand behind, plus one Short cut from it. A weekly roundup is a second format, and only after four live listings.
+
+MEASURE. ~/octopus-content/shop/LOG.md: date, video URL, listing URL, views after 7 days, listing sessions if Etsy shows them, orders. After five videos, make more of the format that produced a session. Stop the one that did not. The views-no-sales playbook is for the listing once the listing itself has views.
+
+The app still does not write an AI disclosure onto the Etsy listing. If a frame or the design is AI-made, you say so in the description and on Etsy.`,
+    steps: [
+      { id: 'live', title: 'Open the listing URL and confirm the price matches ecom. If it does not load, stop' },
+      { id: 'script', title: 'Write a 45 to 90 second script: who it is for, what is printed, who prints it, where to buy it. Save it under ~/octopus-content/shop/<slug>/' },
+      { id: 'shoot', title: 'Record the mockup from the product drawer or a flat lay you made. The product fills the frame in the first three seconds' },
+      { id: 'say-partner', title: 'The voice says you designed it and a print partner makes it, matching the listing' },
+      { id: 'desc', title: 'Description line 1 is the listing URL. Line 2 is one sentence. No other shop\'s link' },
+      { id: 'pin', title: 'Pin a comment with the same URL' },
+      { id: 'short', title: 'Cut one Short from the same master the same day, using the Shorts playbook' },
+      { id: 'log', title: 'Log the video URL, the listing URL, and a 7-day check in ~/octopus-content/shop/LOG.md' },
+      { id: 'judge', title: 'At five videos, compare listing sessions. Repeat the kind that sent people. Stop the kind that did not' },
+      { id: 'disclose', title: 'If any frame or the design is AI-generated, say so in the description and on the Etsy listing' },
+    ],
+  },
+  {
+    id: 'niche-explainers',
+    title: 'Explainer channel: one topic you can teach',
+    whenToUse: 'The shop channel and the story channel each have four public videos, and you are opening one teaching channel.',
+    background: `Pick one topic you can explain from work you have done, for twenty videos, without inventing a new identity each week. Honest topics for this estate are narrow: running a small print shop, reading a fee, setting up a home server, training for a fight camp if that is your training. The channel promise is that topic. A video is one question, with a start, the steps, and the mistake you would not repeat.
+
+NOT THIS CHANNEL. ${YT_POLICY} An AI persona presented as a human expert on health, law, finance, or politics is not allowed to monetize. No AI doctor, no AI lawyer, no AI host telling people what to do with their money. You may use a model to edit a script you wrote or to make a diagram. The judgment in the video is yours. The face on screen is not a credentialed stranger.
+
+ORIGINAL. Each video answers a different question. Five tips with the nouns swapped is a template. Show the actual screen, the actual fee line, the actual sketch. A slideshow of sentences with no demonstration is the kind of video that page lists as outside monetization.
+
+MONEY. Same thresholds as the story channel. ${YT_YPP} Before ads, the video can point at a kit or a product only after the question is answered, and only at something you sell that the video used. One link. Say that you sell it.
+
+The cleaned scripts can become a second kit later (niche-digital-kit). Do not sell a script that recites another site's article.`,
+    steps: [
+      { id: 'topic', title: 'Write the topic sentence and twenty questions in ~/octopus-content/explainers/ABOUT.md', detail: 'If you cannot list twenty questions from experience, narrow the topic. Drop any question that needs a license you do not hold.' },
+      { id: 'channel', title: 'Create the channel with the niche-channels playbook. About repeats the topic sentence and who you are, in plain words' },
+      { id: 'pilot', title: 'Script one 6 to 10 minute video that demonstrates the thing. Produce it with the produce-one-video playbook' },
+      { id: 'voice', title: 'Use your voice, or a synthetic voice you licensed, and set Studio\'s disclosure to match. No expert persona that is not you', detail: YT_POLICY },
+      { id: 'link', title: 'At most one link, after the answer, to something you sell that the video used' },
+      { id: 'four', title: 'Publish four, then read retention in Studio before you write the next six', detail: 'Where that graph sits in Analytics is assumed, unverified. Use the Analytics page you see.' },
+      { id: 'kit', title: 'If the four are worth repeating, add the cleaned scripts to the kit folder. If not, do not package them' },
+      { id: 'stop', title: 'If video three needed a fake expert to exist, stop the channel' },
+      { id: 'separate', title: 'Do not post these videos on the story channel. Different promise' },
+    ],
+  },
+  {
+    id: 'niche-shorts',
+    title: 'Shorts cut from a video you made',
+    whenToUse: 'A long video you are willing to sign is exported, and you are cutting one Short from it.',
+    background: `A Short is a cut of a video you already made, posted on the same channel, to bring a viewer to the long video or the listing. It is not a separate account and not a pile of other people's clips.
+
+${YT_POLICY} Compilations of other people's clips with no narrative are reused content. A Shorts-feed note published by a YouTube employee on 2026-10-01 said recommendation would favor original work and show less of re-uploads that add nothing (assumed, unverified as a permanent policy: https://support.google.com/youtube/thread/470890423). Your Short uses your voice and your picture.
+
+${YT_YPP} Shorts views and long-form watch hours are different doors. A Short does not add watch hours toward the 4,000. Do not expect shop Shorts to unlock ads unless the Shorts door itself gets to 10 million qualified views in 90 days. The shop Short's job is the click to the listing. The story Short's job is the click to the long video.
+
+SHAPE. 20 to 45 seconds, vertical. The length cap is assumed, unverified; if Studio rejects the file, use the cap it shows. First frame is the product or the story's conflict. Captions burned in. One idea. End on the next action. No duet of a stranger's video. No gameplay you do not own, including a three-second sample: a sample of the game is still the game. No commercial song as the sound.`,
+    steps: [
+      { id: 'master', title: 'Start from an exported long video whose rights.txt is complete. No Short from a video you would not sign' },
+      { id: 'cut', title: 'Cut 20 to 45 seconds at the strongest beat, 9:16, captions burned in' },
+      { id: 'same', title: 'Upload it to the same channel as the master' },
+      { id: 'point', title: 'Story Short links to the long video. Shop Short links to the live listing. Put that URL in the description and the pinned comment' },
+      { id: 'disclose', title: 'Set the same synthetic-content answer as the master' },
+      { id: 'count', title: 'One Short per long video. A second cut only if the first sent people after 7 days' },
+      { id: 'audio', title: 'Use the master\'s licensed audio or the audio library. Do not attach a commercial song' },
+      { id: 'log', title: 'Write the Short URL next to the master in that channel\'s LOG.md' },
+    ],
+  },
+  {
+    id: 'niche-digital-kit',
+    title: 'Package a niche kit and sell it by hand',
+    whenToUse: 'You are turning a playbook into a file someone else can buy.',
+    background: `The product you can sell before any channel is in the partner program is the written kit: how to run one original niche, with the checklist, the folder layout, and the rules that keep a channel eligible. Mostly margin. No print partner. No watch hours.
+
+THIS APP DOES NOT DELIVER IT. There is no digital-download adapter. You sell the zip by hand. Places a person can list a file, each with terms you read that day before you rely on them (assumed, unverified; those terms pages were not read for this playbook): an Etsy digital listing, Gumroad, Payhip, or a checkout you already run. Pick one. Do not automate the upload.
+
+A BUYER GETS markdown, a blank video-folder layout, and a one-page list of what not to do: no ripped games, no scraped posts, no accounts opened to dodge a strike, no promise of income. A buyer does not get your Google login, shop keys, unreleased designs, or any hostname.
+
+STRIP BEFORE THE ZIP. Delete hostnames, ports, secret names, account emails, unreleased product URLs, and lines that only make sense inside this app's database. You may say "a print-on-demand shop" and "a listing URL". Keep the policy warnings and the official YouTube URLs. Those are the part worth paying for, and they stop a buyer building a channel the partner program will not pay.
+
+PRICE. A written checklist is often listed in the tens of dollars. That observation is assumed, unverified. Write $17 to $27 as a starting list price for the story kit, or another number you would pay for a checklist. Raise it after ten sales, not before. One kit. The explainer kit waits until that channel exists.
+
+HONEST LISTING. Call it a checklist and templates. Do not promise income. Show the table of contents. Say the footage and the stories must be the buyer's. If a model drafted any paragraph, disclose that the way you disclose an AI design on a shirt. Etsy's current digital-listing rules were not read for this playbook; read them in the same sitting as the Etsy launch playbook before the file goes on Etsy. A kit that tells people to copy a game or a Reddit post is an IP problem on Etsy too. Do not sell that version.
+
+After five support questions, fix the gap that two buyers shared. That is the research.`,
+    steps: [
+      { id: 'source', title: 'Copy docs/playbooks/faceless-story-channel.md and the public parts of docs/INCOME.md into ~/octopus-content/kits/story-channel/, plus a blank folder tree from the produce-one-video playbook' },
+      { id: 'strip', title: 'Delete estate-only lines. Search the folder for hostnames, emails, and secret names. The search returns nothing' },
+      { id: 'warning', title: 'Add DO-NOT.md: no commercial gameplay you do not own, no readings of other people\'s posts, no extra accounts to dodge a strike, no income promise' },
+      { id: 'toc', title: 'Put a table of contents at the top of the kit README' },
+      { id: 'price', title: 'Write the price and the place you will sell in ~/octopus-content/kits/story-channel/LISTING.md, after reading that place\'s current terms' },
+      { id: 'sample', title: 'Link one public video made this way, or write that there is not one yet. Do not imply results you do not have' },
+      { id: 'list', title: 'Upload the zip yourself. Paste the sales URL into LISTING.md' },
+      { id: 'disclose', title: 'If a model wrote any part of the kit, say so on the listing' },
+      { id: 'support', title: 'Keep the first five buyer questions. Fix the kit where two people missed the same step' },
+      { id: 'next', title: 'A second kit only after the first has ten sales, or after you have written down that the first will not sell' },
+    ],
+  },
+  {
+    id: 'weekly-content',
+    title: 'Weekly content and money review',
+    whenToUse: 'At least one channel has a public video. Once a week, about an hour.',
+    background: `One hour. If it takes longer, you are producing during the review. Produce on the other days.
+
+ORDER
+1. Money. Shop NET in this app, the Redbubble CSV if this is that week, kit sales written by hand, and the blog only if you are already in that habit. Write the dollars, including zero.
+2. Notices. YouTube Studio for each channel, and the shop email, for strikes, claims, and takedowns. A claim stops this routine. Use the ip-complaint or redbubble-takedown playbook, or YouTube's own process if you are sure of the facts. Do not upload more until you know which asset was the problem.
+3. One decision. The next artifact is one design, one story, or one kit fix. Not three.
+4. Links. Every public shop video still points at a live listing. If a listing was deactivated, edit that description the same day.
+
+Views are not the business. Keep orders, kit sales, and whether a description link was used if Studio shows that source. The exact Analytics label is assumed, unverified. Ignore subscriber count until a channel is near a threshold you just read on the Earn page.
+
+Story stays at two long videos a week or fewer. Shop stays at one video per design.`,
+    steps: [
+      { id: 'money', title: 'Write this week\'s shop NET, any Redbubble import, and kit sales. Zero is a number you write down' },
+      { id: 'inbox', title: 'Check Studio on each channel, and the shop email, for claims, strikes, and IP mail. Stop the routine on a hit' },
+      { id: 'listings', title: 'Open each shop video\'s listing URL. Fix the description or unlist the video if the listing is gone' },
+      { id: 'pick', title: 'Choose the one next artifact: one design, one story, or one kit fix' },
+      { id: 'rights', title: 'If last week\'s upload has an empty rights line, fill it or unlist the video before you make another' },
+      { id: 'hours', title: 'Write hours spent. If hours are high and dollars are zero for four weeks, cut the channel that took the hours' },
+      { id: 'cadence', title: 'Confirm the story channel is still at two long videos a week or fewer, and the shop channel is still one video per design' },
+      { id: 'ypp', title: 'Glance at Earn only to see distance to the threshold printed on that page. Do not change the videos to chase it', detail: YT_YPP },
+      { id: 'blog', title: 'If octopus-blog/MONETIZATION.md still has an open clock, one action there counts as this week\'s extra', detail: 'A real Associates tag, or one buyer post actually shared. Confirm the file still says the clock is open.' },
+      { id: 'done', title: 'Leave a five-line note: dollars, notices, the next artifact, hours, and the thing you stopped' },
     ],
   },
 ];

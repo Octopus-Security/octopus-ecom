@@ -483,6 +483,7 @@ automated-versus-manual table, the Redbubble research (verified/assumed, with UR
 - Printful (signature only), a real TrendResearch source, a visual (image) check for logos or likenesses.
 - Refund edge cases not verified against a real refunded order (fee treatment, partial statuses).
 - Proposals: never run against a real model, a live Printify catalog or live trend sources (tested with a fake model and the stubs). The lead times behind "too late" are assumed, unverified defaults; the base cost on a proposal is an estimate; a clean originality check is "nothing obvious", not clearance (see `docs/COMPLIANCE.md` section 8).
+- Content income (YouTube niches, Shorts, a sellable kit) is playbooks and `docs/INCOME.md` only. No YouTube adapter, no upload, no digital-file delivery.
 
 ## Trends (added 2026-10-06)
 

@@ -123,6 +123,20 @@ Approving a proposal creates a product in the IDEA stage and nothing else; every
 DRY_RUN) applies unchanged. Someone still has to look at the finished image before approval: the blocklist is text only.
 
 
+## 9. YouTube and other content income (playbooks only)
+
+Nothing in this section is automated. There is no YouTube login, no upload, and no digital-file delivery. The operator follows `docs/INCOME.md` and the content playbooks. Video files stay outside the repo (`~/octopus-content/`) because pushing `main` deploys the shop.
+
+| Claim | Status |
+|---|---|
+| Channel monetization requires original, non-repetitive work. Reused content includes readings of material you did not create (the page's example is text from websites). The reused-content rule applies even with permission. Repetitive templated storylines and generic AI templates are outside monetization. An AI persona giving health, legal, financial, or political advice is outside monetization. Opening a new channel to get around a demonetization or termination can cost every channel. | verified 2026-10-10 - https://support.google.com/youtube/answer/1311392 |
+| Partner-program thresholds on the creators page that day: 500 subscribers, 3 public uploads in 90 days, and 3,000 long-form watch hours or 3 million Shorts views, for fan funding and shopping. 1,000 subscribers and 4,000 long-form watch hours or 10 million Shorts views, for ads. Shorts watch time does not count toward the 4,000 hours. | verified 2026-10-10 - https://www.youtube.com/creators/partner-program/ |
+| A further channel is created from the channel list. A business-name channel creates a Brand Account. | verified 2026-10-10 - https://support.google.com/youtube/answer/1646861 |
+| News reports of higher thresholds from 2027-02-01. | assumed, unverified. The creators page read the same day still showed the lower numbers. See the `estate-income-order` playbook. |
+
+**What this software does about it.** It stores the checklists. It does not scrape Reddit, download gameplay, open Google accounts, or upload video.
+
+
 ## Open questions for the operator
 
 1. **AI disclosure on Etsy.** Secondary sources say AI-made designs must be disclosed in the listing, with "Designed by" and an AI checkbox. Read
