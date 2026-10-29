@@ -33,6 +33,10 @@ const { readPngSize } = require('../png');
 
 const DEFAULT_MIN_COVERAGE = 1.0;
 const FITS = ['cover', 'contain'];
+// Default fit. contain is how the Printify adapter really places a design, and the
+// only rule an AI design (1024x1536 native) can pass for a full-size tee area;
+// a design that does not fill the area is flagged print_review rather than refused.
+const DEFAULT_FIT = 'contain';
 
 /** True pixel size of a PNG file (reads only the header). */
 function readFileSize(file) {
@@ -78,6 +82,20 @@ function evaluate({ design, spec, minCoverage = DEFAULT_MIN_COVERAGE, fit = 'cov
     const nat = w ? (fit === 'contain' ? Math.max(design.nativeWidth / w.required.width, design.nativeHeight / w.required.height) : Math.min(design.nativeWidth / w.required.width, design.nativeHeight / w.required.height)) : null;
     notes.push(`the design was upscaled (${design.upscaleMethod}) from its native ${design.nativeWidth}x${design.nativeHeight}${nat !== null ? `, which is ${pct(nat)} of the requirement before upscaling` : ''}; upscaling adds pixels, not detail`);
   }
+  // Passing is not the same as filling. Under contain a design whose limiting side
+  // is full size passes while printing smaller than the area; an upscaled design
+  // passes on pixels it does not have detail for. Either is publishable, but only
+  // after a person has looked, so it is reported as `review` (the pipeline turns it
+  // into the print_review flag, which stops the agent approving and is named in
+  // the approval summary).
+  const placedRow = rows.find(r => r.placed) || null;
+  const fill = placedRow ? Math.min(placedRow.rw, placedRow.rh) : null;
+  const fillsArea = fill !== null && fill + 1e-9 >= 1;
+  const review = [];
+  if (bad.length === 0 && placedRow) {
+    if (!fillsArea) review.push(`prints at ${pct(fill)} of the ${placedRow.position} area (${placedRow.design.width}x${placedRow.design.height}px into ${placedRow.required.width}x${placedRow.required.height}px), with blank margins`);
+    if (upscaled) review.push(`upscaled from native ${design.nativeWidth}x${design.nativeHeight}: check the mockup for softness`);
+  }
   let reason = null;
   if (bad.length) {
     const b = bad[0];
@@ -86,7 +104,8 @@ function evaluate({ design, spec, minCoverage = DEFAULT_MIN_COVERAGE, fit = 'cov
       + `${upscaled ? ` (upscaled from native ${design.nativeWidth}x${design.nativeHeight})` : ''}`
       + `. Regenerate at a larger size, or lower PRINT_MIN_COVERAGE / set PRINT_FIT=contain if you accept the result`;
   }
-  return { ok: bad.length === 0, unknown: false, fit, minCoverage, positions: rows, notes, reason };
+  return { ok: bad.length === 0, unknown: false, fit, minCoverage, positions: rows, notes, reason,
+    fill, fillsArea, review: review.length ? review.join('; ') : null };
 }
 
 /**
@@ -111,4 +130,4 @@ function checkProduct({ db, dataDir, product, minCoverage = DEFAULT_MIN_COVERAGE
 const validMinCoverage = v => Number.isFinite(v) && v >= 0.1 && v <= 1;
 const validFit = v => FITS.includes(v);
 
-module.exports = { evaluate, checkProduct, readFileSize, validMinCoverage, validFit, DEFAULT_MIN_COVERAGE, FITS };
+module.exports = { evaluate, checkProduct, readFileSize, validMinCoverage, validFit, DEFAULT_MIN_COVERAGE, DEFAULT_FIT, FITS };

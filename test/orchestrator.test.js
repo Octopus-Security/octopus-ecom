@@ -329,6 +329,7 @@ test('CANCEL: the step in flight finishes, nothing new starts, pending items are
 
 test('a design too small to print fails THAT item with print_not_ready; the rest of the batch carries on; nothing is published', async () => {
   const d = makeDeps();
+  d.settings.set('print_fit', 'cover'); // fill: the strict rule, where 3600x5400 is refused
   let n = 0; const calls = fakeImages(d);
   const gen = d.adapters.imagegen.generate;
   d.adapters.imagegen.generate = async (...a) => { n++; if (n === 2) { const r = fakeImages(d, { w: 3600, h: 5400 }); const out = await d.adapters.imagegen.generate(...a); fakeImages(d, { calls }); d.adapters.imagegen.generate = gen; return out; } return gen(...a); };

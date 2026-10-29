@@ -41,7 +41,7 @@ function loadConfig(env = process.env) {
   // M4: print-readiness rule and batch limits. Bad values refuse to boot rather than silently weakening a safety check.
   const minCov = env.PRINT_MIN_COVERAGE === undefined || env.PRINT_MIN_COVERAGE === '' ? 1 : Number(env.PRINT_MIN_COVERAGE);
   if (!(minCov >= 0.1 && minCov <= 1)) errors.push(`PRINT_MIN_COVERAGE must be a number from 0.1 to 1 (1 = both print-area dimensions must be met), got "${env.PRINT_MIN_COVERAGE}".`);
-  const printFit = (env.PRINT_FIT || 'cover').trim().toLowerCase();
+  const printFit = (env.PRINT_FIT || 'contain').trim().toLowerCase();
   if (!['cover', 'contain'].includes(printFit)) errors.push(`PRINT_FIT must be "cover" or "contain", got "${env.PRINT_FIT}".`);
   const intIn = (name, def, lo, hi) => {
     if (env[name] === undefined || env[name] === '') return def;

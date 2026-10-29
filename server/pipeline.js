@@ -110,7 +110,7 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
     const fit = settings ? settings.get('print_fit', '') : '';
     return {
       minCoverage: printReadiness.validMinCoverage(mc) ? mc : (printReadiness.validMinCoverage(printDefaults.minCoverage) ? printDefaults.minCoverage : printReadiness.DEFAULT_MIN_COVERAGE),
-      fit: printReadiness.validFit(fit) ? fit : (printReadiness.validFit(printDefaults.fit) ? printDefaults.fit : 'cover'),
+      fit: printReadiness.validFit(fit) ? fit : (printReadiness.validFit(printDefaults.fit) ? printDefaults.fit : printReadiness.DEFAULT_FIT),
     };
   }
   /** Measure the latest design's true pixels (PNG header) against the product's print_spec. */
@@ -124,6 +124,7 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
       const r = checkPrint(id);
       if (r.unknown) return;
       setFlag(id, 'print_not_ready', r.ok ? null : printFlagDetail(r));
+      setFlag(id, 'print_review', r.ok && r.review ? String(r.review).slice(0, 400) : null);
     } catch (e) { log.warn(`[pipeline] print-readiness check failed for product ${id}: ${e.message}`); }
   }
 
@@ -407,6 +408,7 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
       // M4: a design that is too small for the print area cannot reach mockup_ready. Refuse BEFORE anything is created or paid for.
       const pr = checkPrint(id);
       setFlag(id, 'print_not_ready', pr.ok ? null : printFlagDetail(pr));
+      setFlag(id, 'print_review', pr.ok && pr.review ? String(pr.review).slice(0, 400) : null);
       if (!pr.ok) {
         productEvent(db, id, { actor, note: `print-readiness refused the POD step: ${pr.reason}` });
         throw new PipelineError(`Not print-ready: ${pr.reason}.`, 422, 'print_not_ready', { readiness: pr });

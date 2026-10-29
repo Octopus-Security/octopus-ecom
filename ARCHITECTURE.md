@@ -292,15 +292,18 @@ defaults; `x-remaining-today` is logged when low.
 
 **Print readiness (`domain/print-readiness.js`).** The latest design's TRUE pixel size is read from the PNG IHDR of the stored file (never
 from `designs.width/height`) and compared with `products.print_spec`. With `rw = designW / requiredW` and `rh = designH / requiredH`:
-`PRINT_FIT=cover` (default) takes `coverage = min(rw, rh)`, so both dimensions must reach the requirement; `PRINT_FIT=contain` takes
-`max(rw, rh)`: the design is placed whole, letter-boxed, and only its limiting side must reach it (this is how the Printify adapter
-actually places the image). A position passes at `coverage >= PRINT_MIN_COVERAGE` (default 1.0). Panel Settings can override both. Only the position the
+`PRINT_FIT=cover` ("fill") takes `coverage = min(rw, rh)`, so both dimensions must reach the requirement; `PRINT_FIT=contain` ("fit",
+the default since 2026-10-29) takes `max(rw, rh)`: the design is placed whole, letter-boxed, and only its limiting side must reach it (this
+is how the Printify adapter actually places the image). A position passes at `coverage >= PRINT_MIN_COVERAGE` (default 1.0). Panel Settings can override both. Only the position the
 design is placed on is decided. DPI is reported only if the spec carries physical size (Printify's does not: pixel-based only). If the
 design was upscaled the message says so and what fraction the native size was. A failing design makes `create-pod` answer 422
 `print_not_ready` (nothing is sent to the provider, the stage stays `design_generated`), sets the `print_not_ready` flag (also set as
-soon as the design is generated), and an unreadable file or unknown print spec is a refusal, not a pass. **Default consequence:** M1 upscales
-gpt-image-1's 1024x1536 to 3600x5400, which is 80% of a 4500x5400 tee area's width: at the defaults it is REFUSED. Accept it with
-`PRINT_MIN_COVERAGE=0.8` or `PRINT_FIT=contain`. The stub generator makes the requested size, so the no-key flow passes.
+soon as the design is generated), and an unreadable file or unknown print spec is a refusal, not a pass. **Passing is not filling:** a design that
+passes but whose `min(rw, rh)` is under 1 (it prints with margins), or that was upscaled, gets the `print_review` flag with what to look
+at. A flagged product is never approved by the agent, and the approval summary names it, so the owner sees the mockup first. **Default
+consequence:** M1 upscales gpt-image-1's 1024x1536 to 3600x5400 for a 4500x5400 tee area: under contain it passes (height is 100%) and is
+flagged `print_review` (80% of the width, upscaled). Under cover it is REFUSED. The stub generator makes the requested size, so the
+no-key flow passes unflagged.
 
 **Blocklist (`domain/blocklist.js`, seed in `blocklist-seed.js`).** About 1,650 seeded terms (brands, leagues, teams, franchises, characters,
 celebrities, slogans), editable in Settings -> Blocklist (list, add, remove, newline import, a test box); every edit re-scans unfinished

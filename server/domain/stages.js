@@ -70,6 +70,8 @@ function approvalSummary(product, { dryRun } = {}) {
   if (bl) lines.push(`TRADEMARK/IP BLOCKLIST HITS: ${bl.detail}. Approve only if you have the right to use these terms; otherwise edit the copy or reject.`);
   const pn = flags.find(f => f.code === 'print_not_ready');
   if (pn) lines.push(`PRINT-READINESS: ${pn.detail}.`);
+  const prv = flags.find(f => f.code === 'print_review');
+  if (prv) lines.push(`PRINT REVIEW: ${prv.detail}. Look at the mockup before approving.`);
   const qa = flags.filter(f => String(f.code).startsWith('qa_'));
   if (qa.length) lines.push(`AUTOMATED REVIEW raised: ${qa.map(f => `${f.code} (${f.detail})`).join('; ')}.`);
   if (dryRun) lines.push('DRY_RUN is on: nothing real will be published until live writes are armed.');

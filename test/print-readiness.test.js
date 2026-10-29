@@ -88,8 +88,9 @@ async function withDesign(d, w, h, native = {}, brief = 'a fox in a scarf') {
   return p.id;
 }
 
-test('create-pod REFUSES a too-small design: clear reason, print_not_ready flag, stage unchanged, nothing sent to the POD provider', async () => {
+test('under fill (cover), create-pod REFUSES a too-small design: clear reason, print_not_ready flag, stage unchanged, nothing sent to the POD provider', async () => {
   const d = makeDeps();
+  d.settings.set('print_fit', 'cover');
   let podCalls = 0; const real = d.adapters.pod.createProduct; d.adapters.pod.createProduct = async (...a) => { podCalls++; return real(...a); };
   const id = await withDesign(d, 3600, 5400, { nativeWidth: 1024, nativeHeight: 1536, upscaled: true, upscaleMethod: 'bilinear' });
   assert.ok(d.pipeline.detail(id).product.flags.some(f => f.code === 'print_not_ready'), 'flagged as soon as the design exists');
@@ -106,12 +107,18 @@ test('create-pod REFUSES a too-small design: clear reason, print_not_ready flag,
   assert.ok(!d.pipeline.detail(id).product.flags.some(f => f.code === 'print_not_ready'), 'flag cleared when it passes');
 });
 
-test('contain-fit via the panel setting accepts the narrower design; a regenerated larger design clears the flag', async () => {
+test('fit (contain, the default) accepts the narrower design and flags it print_review; fill refuses it; a full-size design clears both', async () => {
   const d = makeDeps();
-  const id = await withDesign(d, 3600, 5400);
-  d.settings.set('print_fit', 'contain');
+  const id = await withDesign(d, 3600, 5400, { nativeWidth: 1024, nativeHeight: 1536, upscaled: true, upscaleMethod: 'bilinear' });
+  const early = d.pipeline.detail(id).product.flags.find(f => f.code === 'print_review');
+  assert.ok(early, 'flagged for review as soon as the design exists');
   assert.equal((await d.pipeline.createPodProduct(id)).stage, 'mockup_ready');
+  const flags = d.pipeline.detail(id).product.flags;
+  assert.ok(!flags.some(f => f.code === 'print_not_ready'));
+  const rv = flags.find(f => f.code === 'print_review');
+  assert.match(rv.detail, /prints at 80% of the front area/); assert.match(rv.detail, /upscaled from native 1024x1536/);
   const d2 = makeDeps();
+  d2.settings.set('print_fit', 'cover');
   const id2 = await withDesign(d2, 3600, 5400);
   await assert.rejects(d2.pipeline.createPodProduct(id2), /print_not_ready|Not print-ready/);
   await withDesign(d2, 4500, 5400); // new generation on a new product; regenerate the SAME product at full size:
@@ -119,6 +126,25 @@ test('contain-fit via the panel setting accepts the narrower design; a regenerat
   await d2.pipeline.generateDesign(id2);
   assert.ok(!d2.pipeline.detail(id2).product.flags.some(f => f.code === 'print_not_ready'));
   assert.equal((await d2.pipeline.createPodProduct(id2)).stage, 'mockup_ready');
+  assert.ok(!d2.pipeline.detail(id2).product.flags.some(f => f.code === 'print_review'), 'a design that fills the area needs no review');
+});
+
+test('evaluate reports fill separately from passing', () => {
+  const up = dz(3600, 5400, { nativeWidth: 1024, nativeHeight: 1536, upscaleMethod: 'bilinear' });
+  const c = evaluate({ design: up, spec: TEE, fit: 'contain' });
+  assert.equal(c.ok, true); assert.equal(c.fillsArea, false); assert.ok(Math.abs(c.fill - 0.8) < 1e-9); assert.match(c.review, /80%/);
+  const full = evaluate({ design: dz(4500, 5400), spec: TEE, fit: 'contain' });
+  assert.equal(full.fillsArea, true); assert.equal(full.review, null);
+  const big = evaluate({ design: dz(9000, 10800), spec: TEE, fit: 'contain' });
+  assert.equal(big.review, null, 'larger than the area is fine');
+  const failing = evaluate({ design: dz(1000, 1000), spec: TEE, fit: 'contain' });
+  assert.equal(failing.ok, false); assert.equal(failing.review, null, 'a refusal is not also a review');
+});
+
+test('the approval summary names print_review and says to look at the mockup', () => {
+  const { approvalSummary } = require('../server/domain/stages');
+  const s = approvalSummary({ id: 7, flags: JSON.stringify([{ code: 'print_review', detail: 'prints at 80% of the front area' }]) });
+  assert.match(s, /PRINT REVIEW: prints at 80% of the front area\. Look at the mockup before approving\./);
 });
 
 test('the STUB image generator makes the requested size, so the no-key flow passes the default rule end to end', async () => {
@@ -127,7 +153,8 @@ test('the STUB image generator makes the requested size, so the no-key flow pass
   await d.pipeline.selectPod(p.id, { blueprint: 'stub-tee', providerId: 'stub-pp' });
   await d.pipeline.generateDesign(p.id);
   const r = d.pipeline.checkPrint(p.id);
-  assert.equal(r.ok, true); assert.deepEqual(r.positions[0].design, { width: 4500, height: 5400 }); assert.equal(r.fit, 'cover'); assert.equal(r.minCoverage, 1);
+  assert.equal(r.ok, true); assert.deepEqual(r.positions[0].design, { width: 4500, height: 5400 }); assert.equal(r.fit, 'contain'); assert.equal(r.minCoverage, 1);
+  assert.equal(r.review, null, 'a full-size design is not flagged for review');
   assert.equal((await d.pipeline.createPodProduct(p.id)).stage, 'mockup_ready');
   // and a mug (landscape 2475x1155) and a poster (5400x7200) too
   for (const [bp, w, h] of [['stub-mug', 2475, 1155], ['stub-poster', 5400, 7200]]) {
@@ -138,15 +165,24 @@ test('the STUB image generator makes the requested size, so the no-key flow pass
   }
 });
 
+test('a print_review flag blocks the agent from approving, like any flag', async () => {
+  const d = makeDeps({ DRY_RUN: 'false' });
+  const id = await withDesign(d, 3600, 5400);
+  d.db.prepare("UPDATE products SET stage = 'PENDING_APPROVAL', store_id = ? WHERE id = ?").run(Number(d.db.prepare("INSERT INTO stores(platform,name,autopublish,created_at) VALUES('etsy','s',1,?)").run(new Date().toISOString()).lastInsertRowid), id);
+  await assert.rejects(d.pipeline.approve(id, { actor: 'agent' }), /flagged \(print_review\)/);
+});
+
 test('a print_not_ready flag blocks the agent from approving, like any flag', async () => {
   const d = makeDeps({ DRY_RUN: 'false' });
+  d.settings.set('print_fit', 'cover');
   const id = await withDesign(d, 3600, 5400);
   d.db.prepare("UPDATE products SET stage = 'PENDING_APPROVAL', store_id = ? WHERE id = ?").run(Number(d.db.prepare("INSERT INTO stores(platform,name,autopublish,created_at) VALUES('etsy','s',1,?)").run(new Date().toISOString()).lastInsertRowid), id);
   await assert.rejects(d.pipeline.approve(id, { actor: 'agent' }), /flagged \(print_not_ready\)/);
 });
 
 test('config: PRINT_MIN_COVERAGE and PRINT_FIT are validated and a bad value refuses to boot', () => {
-  assert.equal(loadConfig({}).print.minCoverage, 1); assert.equal(loadConfig({}).print.fit, 'cover');
+  assert.equal(loadConfig({}).print.minCoverage, 1); assert.equal(loadConfig({}).print.fit, 'contain');
+  assert.equal(loadConfig({ PRINT_FIT: 'cover' }).print.fit, 'cover');
   assert.equal(loadConfig({ PRINT_MIN_COVERAGE: '0.8', PRINT_FIT: 'contain' }).print.minCoverage, 0.8);
   for (const bad of [{ PRINT_MIN_COVERAGE: '0' }, { PRINT_MIN_COVERAGE: '1.5' }, { PRINT_MIN_COVERAGE: 'x' }, { PRINT_FIT: 'stretch' }]) assert.throws(() => loadConfig(bad), /Refusing to boot/);
 });
