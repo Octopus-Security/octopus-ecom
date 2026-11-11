@@ -104,10 +104,39 @@ injectable). Non-GET requests are retried only on 429, never on 5xx or timeout, 
 avoid double-creating a listing. Adapter failures are caught by the pipeline and
 move the product to `failed`; they never crash the process.
 
-As of M1, **ImageGen** (OpenAI Images) and **ListingCopy** (via the LLM interface) have real
+As of M1, **ImageGen** (OpenAI Images by default; Gemini, xAI and OpenRouter selectable, see below) and **ListingCopy** (via the LLM interface) have real
 implementations and are chosen whenever a key exists, even in DRY_RUN (generation is spend, not a
 marketplace write). Printify is real as of M2 (below); Etsy (M3) is real; trend research remains a stub/scaffold; Printful is a
 signature-only scaffold that stays unimplemented.
+
+### Image providers (added 2026-11-11)
+
+`adapters/imagegen/index.js` picks the real adapter PER CALL from Settings (table `settings`: `image_provider`,
+`image_model_<provider>`, `image_resolution`, `image_max_cents`), then env (`IMAGE_PROVIDER`, `IMAGE_MODEL`), then the default,
+which is still OpenAI `gpt-image-1`, so nothing changes until the owner picks another. All four adapters share the interface
+(`implemented`, `estimate`, `generate`), call `spend.assertCanSpend(estimate)` BEFORE any request, and return PNGs through
+`fitToArea` (native vs upscaled size recorded honestly). A chosen provider with no key throws a clear error; it never falls back to
+another paid provider (only the default, openai with no key, still uses the free stub, as before).
+
+| Provider (key / env) | Endpoint | Models | Docs (read 2026-11-11) |
+|---|---|---|---|
+| `gemini` / `GEMINI_API_KEY` | `POST generativelanguage.googleapis.com/v1beta/interactions` | `gemini-3.1-flash-image` (default), `gemini-nano-banana-2.1`, `gemini-3.1-flash-lite-image`, `gemini-3-pro-image`, `gemini-2.5-flash-image` (deprecated) | https://aistudio.google.com/docs/image-generation , prices https://aistudio.google.com/docs/pricing |
+| `xai` / `XAI_API_KEY` | `POST api.x.ai/v1/images/generations` | `grok-imagine-image-2.0` (default), `grok-imagine-image` | https://docs.x.ai/developers/model-capabilities/images/generation , https://docs.x.ai/developers/pricing |
+| `openrouter` / `OPENROUTER_API_KEY` | `POST openrouter.ai/api/v1/images` | any image model id, chosen in Settings (no default) | https://openrouter.ai/docs/features/multimodal/image-generation |
+
+Verified vs assumed is in each adapter's header comment. Not verified anywhere: the raw REST response of Gemini's Interactions API (only SDK
+samples were documented; parsing is tolerant), xAI's synchronous `b64_json` response (taken from the OpenAI-SDK sample), Gemini's `4:5`
+aspect ratio, and the pixel size of any tier (xAI `1k/2k`, Gemini `1K/2K/4K`: never stated; the real size is always read from the PNG).
+Prices (`pricing.js`): Gemini and xAI per-image prices are from the vendors' pricing pages; Gemini adds 25% headroom for thinking tokens,
+xAI `2k` is estimated at double (the page does not say it costs more), and OpenRouter has no reliable per-image price, so the cap check
+uses a flat ceiling per image (default 25 cents, `image_max_cents` / `IMAGE_MAX_CENTS`) and the recorded cost is the response's `usage.cost`.
+All three err HIGH because the estimate feeds the daily cap.
+
+**Nous Research has no image generation to integrate.** No Nous inference-API image endpoint is documented: the Hermes Agent docs
+(https://hermes-agent.nousresearch.com/docs/user-guide/features/image-generation, read 2026-11-11) say image generation for subscribers goes
+through a Tool Gateway (FAL models, Krea) and that "Nous Portal proxies the chat-completions protocol only". The Portal's own API docs could not
+be fetched (`inference-docs.nousresearch.com` did not resolve, `portal.nousresearch.com/api-docs` returned 429), so "text-only" is the documented
+reading, not a confirmed one. No adapter was written.
 
 ### M1: image generation, copy, pipeline
 

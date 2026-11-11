@@ -20,7 +20,13 @@ function sniffImage(b) {
 function actorOf() { return 'human'; } // every request here is an authenticated owner
 
 function router(deps) {
-  const { db, credentials, keystore, settings, confirm, dryRun, spend, adapters, llm } = deps;
+  const { db, credentials, keystore, settings, confirm, dryRun, spend, adapters, llm, cfg } = deps;
+  const imagegenSel = require('../adapters/imagegen');
+  const { PROVIDERS, PROVIDER_IDS } = require('../adapters/imagegen/providers');
+  const imagePayload = () => ({
+    ...imagegenSel.resolveSelection({ cfg, settings }),
+    providers: PROVIDER_IDS.map(id => ({ id, label: PROVIDERS[id].label, credential: PROVIDERS[id].credential, keyPresent: credentials.has(PROVIDERS[id].credential), models: PROVIDERS[id].models, freeTextModel: PROVIDERS[id].freeText, resolutions: PROVIDERS[id].resolutions })),
+  });
   void productEvent;
   const r = express.Router();
 
@@ -204,6 +210,7 @@ function router(deps) {
       dryRun: dryRun.isOn(), disarmPhrase: dryRun.PHRASE,
       dailySpendCapCents: spend.capCents(), marginFloorCents: settings.getInt('margin_floor_cents', 200),
       print: pipe.printRule(),
+      image: imagePayload(),
       credentials: credentials.status(),
     });
   }));
@@ -223,7 +230,29 @@ function router(deps) {
       if (!['cover', 'contain'].includes(b.printFit)) return res.status(400).json({ error: 'printFit must be "cover" or "contain"' });
       settings.set('print_fit', b.printFit);
     }
-    res.json({ ok: true, dailySpendCapCents: spend.capCents(), marginFloorCents: settings.getInt('margin_floor_cents', 200), print: pipe.printRule() });
+    if (b.imageProvider !== undefined) {
+      if (!PROVIDER_IDS.includes(b.imageProvider)) return res.status(400).json({ error: `imageProvider must be one of ${PROVIDER_IDS.join(', ')}` });
+      settings.set('image_provider', b.imageProvider);
+    }
+    if (b.imageModel !== undefined) { // applies to the provider named in the same call, else the current one
+      const prov = b.imageProvider || imagegenSel.resolveSelection({ cfg, settings }).provider;
+      const m = String(b.imageModel).trim();
+      if (m.length > 120 || /[\s\u0000-\u001f]/.test(m)) return res.status(400).json({ error: 'imageModel must be a model id without spaces (<=120 chars)' });
+      if (!PROVIDERS[prov].freeText && m && !PROVIDERS[prov].models.includes(m)) return res.status(400).json({ error: `imageModel for ${prov} must be one of ${PROVIDERS[prov].models.join(', ')}` });
+      settings.set(`image_model_${prov}`, m);
+    }
+    if (b.imageResolution !== undefined) {
+      const v = String(b.imageResolution).trim();
+      const all = [...PROVIDERS.gemini.resolutions, ...PROVIDERS.xai.resolutions, ''];
+      if (!all.includes(v)) return res.status(400).json({ error: `imageResolution must be one of ${all.filter(Boolean).join(', ')} (or empty for the default)` });
+      settings.set('image_resolution', v);
+    }
+    if (b.imageMaxCents !== undefined) {
+      const n = Number(b.imageMaxCents);
+      if (b.imageMaxCents !== '' && !(n > 0 && n <= 10000)) return res.status(400).json({ error: 'imageMaxCents must be a number of cents from 1 to 10000 (or empty for the default)' });
+      settings.set('image_max_cents', b.imageMaxCents === '' ? '' : n);
+    }
+    res.json({ ok: true, dailySpendCapCents: spend.capCents(), marginFloorCents: settings.getInt('margin_floor_cents', 200), print: pipe.printRule(), image: imagePayload() });
   }));
 
   // POST /api/settings/credentials {name, value} — sealed; the response carries no value.

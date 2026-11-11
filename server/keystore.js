@@ -6,7 +6,7 @@
  */
 const { seal, open, fingerprint } = require('./crypto');
 
-const KEY_NAMES = ['openai', 'printify', 'etsy_api_key', 'etsy_shared_secret'];
+const KEY_NAMES = ['openai', 'gemini', 'xai', 'openrouter', 'printify', 'etsy_api_key', 'etsy_shared_secret'];
 
 function makeKeystore(db, secret) {
   return {
