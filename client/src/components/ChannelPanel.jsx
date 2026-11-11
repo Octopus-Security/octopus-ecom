@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import oDialog from 'octopus-kit/ui/dialog.js';
 import { api, dollars } from '../api.js';
 
 const STATE_LABEL = { not_listed: 'not listed', uploaded: 'uploaded', live: 'live', removed: 'removed' };
@@ -8,7 +9,7 @@ export function CopyButton({ text, label = 'Copy' }) {
   const [done, setDone] = useState(false);
   return (
     <button className="ghost small" type="button" onClick={async () => {
-      try { await navigator.clipboard.writeText(text); setDone(true); setTimeout(() => setDone(false), 1500); } catch { window.prompt('Copy this text', text); }
+      try { await navigator.clipboard.writeText(text); setDone(true); setTimeout(() => setDone(false), 1500); } catch { oDialog.prompt({ title: 'Copy this text', label: 'Select and copy', value: text }); }
     }}>{done ? 'Copied' : label}</button>
   );
 }

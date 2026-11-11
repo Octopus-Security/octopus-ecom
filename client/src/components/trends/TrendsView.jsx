@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import oDialog from 'octopus-kit/ui/dialog.js';
 import './trends.css';
 
 const TYPE_LABEL = { tee: 'T-shirt', mug: 'Mug', sticker: 'Sticker', wall_art: 'Wall art' };
@@ -155,7 +156,7 @@ function Inputs({ api, status, onChanged, act, busy }) {
   const enableEtsy = () => act(async () => {
     const gate = await api.etsyEnable();
     if (gate.needsConfirm) {
-      if (!window.confirm(`${gate.summary}\n\nTurn on the Etsy market source?`)) return;
+      if (!(await oDialog.confirm({ title: 'Turn on the Etsy market source?', body: gate.summary, confirmLabel: 'Turn on' }))) return;
       await api.etsyEnable(gate.token);
     }
   });
