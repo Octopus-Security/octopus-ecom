@@ -145,14 +145,14 @@ test('NEVER publishes unless store autopublish AND DRY_RUN off AND no flags AND 
     assert.ok(v.items.every(i => i.stage === 'PENDING_APPROVAL' && i.qa === 'skipped')); }
   // everything in place
   const d = makeDeps({ DRY_RUN: 'false' }); realish(d); qaLlm(d, []); const calls = published(d);
-  const v = await run(d, { ...INPUT, count: 2, storeId: store(d, 1) });
+  const v = await run(d, { ...INPUT, count: 2, variantIds: ['stub-tee-v1', 'stub-tee-v2'], storeId: store(d, 1) }); // explicit variants: a defaulted single variant is flagged and blocks autopublish
   assert.equal(calls.length, 2); assert.ok(calls.every(c => c[1] === 'agent'));
   assert.ok(v.items.every(i => i.step === 'published' && i.qa === 'ran' && i.stage === 'published'));
   assert.ok(d.db.prepare("SELECT 1 FROM events WHERE kind='stage' AND stage_to='approved' AND actor='agent'").get(), 'approval went through stages.transition by the agent');
   // a failed autopublish steps back to the human gate
   const d2 = makeDeps({ DRY_RUN: 'false' }); realish(d2); qaLlm(d2, []);
   d2.publisher.publish = async () => { throw new Error('Printify said no'); };
-  const v2 = await run(d2, { ...INPUT, count: 1, storeId: store(d2, 1) });
+  const v2 = await run(d2, { ...INPUT, count: 1, variantIds: ['stub-tee-v1', 'stub-tee-v2'], storeId: store(d2, 1) });
   assert.equal(v2.items[0].stage, 'PENDING_APPROVAL'); assert.match(v2.items[0].error, /autopublish stopped: Printify said no/);
 });
 

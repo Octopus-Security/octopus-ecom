@@ -131,6 +131,8 @@ function router(deps) {
   r.post('/products/:id/draft-listing', wrap(async (req, res) => { res.json({ ok: true, product: await pipe.draftListing(req.params.id, { actor: actorOf(req) }) }); }));
   r.patch('/products/:id/price', wrap(async (req, res) => { res.json({ ok: true, product: await pipe.setPrice(req.params.id, req.body || {}, { actor: actorOf(req) }) }); }));
   r.post('/products/:id/submit', wrap(async (req, res) => { res.json({ ok: true, product: await pipe.submit(req.params.id, { actor: actorOf(req) }) }); }));
+  // Drive an existing product to PENDING_APPROVAL (design, POD product, copy, submit). Never approves or publishes.
+  r.post('/products/:id/advance', wrap(async (req, res) => { res.json({ ok: true, product: await pipe.advance(req.params.id, { actor: actorOf(req) }) }); }));
   r.post('/products/:id/reject', wrap(async (req, res) => { res.json({ ok: true, product: await pipe.reject(req.params.id, { actor: actorOf(req), note: String((req.body || {}).note || '').slice(0, 500) }) }); }));
   r.post('/products/:id/archive', wrap(async (req, res) => { res.json({ ok: true, product: await pipe.archive(req.params.id, { actor: actorOf(req), note: String((req.body || {}).note || '').slice(0, 500) }) }); }));
 

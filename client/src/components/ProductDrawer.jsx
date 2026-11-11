@@ -124,6 +124,7 @@ export default function ProductDrawer({ id, onClose, onChanged, askConfirm, onOp
           <div className="row"><label className="grow">List price (USD)<input type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} /></label>
             <button disabled={!!busy || price === ''} onClick={() => run('price', () => api.setPrice(id, { listPrice: price }))}>Set price</button></div>)}
         <div className="row">
+          {['idea', 'design_generated', 'mockup_ready', 'listing_drafted'].includes(st) && p.blueprint && p.print_provider_id && <button disabled={!!busy} onClick={() => run('adv', () => api.advance(id))}>{busy === 'adv' ? 'Running...' : 'Run to approval'}</button>}
           {(st === 'design_generated' || st === 'failed') && latest && p.blueprint && <button disabled={!!busy} onClick={() => run('pod', () => api.createPod(id))}>{busy === 'pod' ? 'Creating...' : 'Create POD product + mockups'}</button>}
           {st === 'mockup_ready' && <button disabled={!!busy} onClick={() => run('draft', () => api.draftListing(id))}>{busy === 'draft' ? 'Drafting...' : 'Draft listing + margin'}</button>}
           {['mockup_ready', 'listing_drafted', 'PENDING_APPROVAL'].includes(st) && p.pod_external_id && !p.pod_external_id.startsWith('stub-') && <button className="ghost" disabled={!!busy} onClick={() => run('mock', () => api.refreshMockups(id))}>Refresh mockups</button>}

@@ -169,7 +169,7 @@ test('a print_review flag blocks the agent from approving, like any flag', async
   const d = makeDeps({ DRY_RUN: 'false' });
   const id = await withDesign(d, 3600, 5400);
   d.db.prepare("UPDATE products SET stage = 'PENDING_APPROVAL', store_id = ? WHERE id = ?").run(Number(d.db.prepare("INSERT INTO stores(platform,name,autopublish,created_at) VALUES('etsy','s',1,?)").run(new Date().toISOString()).lastInsertRowid), id);
-  await assert.rejects(d.pipeline.approve(id, { actor: 'agent' }), /flagged \(print_review\)/);
+  await assert.rejects(d.pipeline.approve(id, { actor: 'agent' }), /flagged \(.*print_review/);
 });
 
 test('a print_not_ready flag blocks the agent from approving, like any flag', async () => {
@@ -177,7 +177,7 @@ test('a print_not_ready flag blocks the agent from approving, like any flag', as
   d.settings.set('print_fit', 'cover');
   const id = await withDesign(d, 3600, 5400);
   d.db.prepare("UPDATE products SET stage = 'PENDING_APPROVAL', store_id = ? WHERE id = ?").run(Number(d.db.prepare("INSERT INTO stores(platform,name,autopublish,created_at) VALUES('etsy','s',1,?)").run(new Date().toISOString()).lastInsertRowid), id);
-  await assert.rejects(d.pipeline.approve(id, { actor: 'agent' }), /flagged \(print_not_ready\)/);
+  await assert.rejects(d.pipeline.approve(id, { actor: 'agent' }), /flagged \(.*print_not_ready/);
 });
 
 test('config: PRINT_MIN_COVERAGE and PRINT_FIT are validated and a bad value refuses to boot', () => {
