@@ -367,9 +367,13 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
       catch (e) { throw new PipelineError(`could not read the print provider's variants: ${e.message}`, 502, 'pod_read_failed'); }
       const all = cat.variants || [];
       if (!all.length) throw new PipelineError('that blueprint/provider offers no variants', 422, 'no_variants');
-      const want = (Array.isArray(variantIds) && variantIds.length ? variantIds : [all[0].id]).map(String);
+      const defaulted = !(Array.isArray(variantIds) && variantIds.length);
+      const want = (defaulted ? [all[0].id] : variantIds).map(String);
       const chosen = all.filter(v => want.includes(String(v.id)));
       if (chosen.length !== new Set(want).size) throw new PipelineError('one or more variants do not belong to that blueprint/provider', 422, 'bad_variant');
+      // No variants were chosen (a batch or an approved proposal): only the FIRST one is listed, e.g. a single size and colour of a tee.
+      // Say so, so it is a decision rather than a surprise on Etsy. Choosing variants explicitly clears it.
+      setFlag(id, 'single_variant', defaulted && all.length > 1 ? `no variants were chosen, so only "${all[0].title || all[0].id}" (1 of ${all.length}) will be sold; choose the sizes/colours in the product's POD step` : null);
       const positions = new Map();
       for (const v of chosen) for (const ph of v.placeholders || []) {
         const cur = positions.get(ph.position);
@@ -568,7 +572,29 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
     return { printReadiness: readiness, product: { ...p, keywords: kw(p), flags: parseFlags(p), pod_variant_ids: parse(p.pod_variant_ids, []), print_spec: parse(p.print_spec, null) }, mockups, economics: unitEconomics(p), designs, costs, costTotalCents: costs.reduce((a, c) => a + c.amountCents, 0), events, copy };
   }
 
-  return { checkPrint, printRule, addFlags, rescanBlocklist, saveCopy, create, generateDesign, manualDesignPrompt, attachDesign, draftCopy, editCopy, detail, validateInput, PipelineError, selectPod, createPodProduct, refreshMockups, draftListing, setPrice, submit, approve, reject, archive, marginPreview, applyMargin, exclusive, get, need, setFlag };
+  /**
+   * Walk a product forward through the same steps a person clicks (design -> POD product + mockups -> listing copy + margin ->
+   * submit) and STOP at PENDING_APPROVAL. It never approves or publishes. Existing listing copy (a proposal's) is kept by
+   * draftListing; a spend-cap refusal or a print_not_ready surfaces as the step's own error and the product keeps its stage.
+   * This is what a batch item does, for a product that already exists (a proposal that was approved into the IDEA stage).
+   */
+  async function advance(id, { actor = 'human' } = {}) {
+    id = Number(id);
+    for (let guard = 0; guard < 8; guard++) {
+      const p = need(id);
+      if (p.stage === S.IDEA) {
+        if (!p.blueprint || !p.print_provider_id) throw new PipelineError('Choose a blueprint and print provider first.', 409, 'no_pod_choice');
+        await generateDesign(id, { actor });
+      } else if (p.stage === S.DESIGN) await createPodProduct(id, { actor });
+      else if (p.stage === S.MOCKUP) await draftListing(id, { actor });
+      else if (p.stage === S.DRAFTED) await submit(id, { actor });
+      else if (p.stage === S.PENDING) return get(id);
+      else throw new PipelineError(`A product that is ${p.stage} cannot be advanced to approval.`, 409, 'illegal_stage');
+    }
+    throw new PipelineError('The product did not reach PENDING_APPROVAL (loop guard).', 500, 'no_convergence');
+  }
+
+  return { advance, checkPrint, printRule, addFlags, rescanBlocklist, saveCopy, create, generateDesign, manualDesignPrompt, attachDesign, draftCopy, editCopy, detail, validateInput, PipelineError, selectPod, createPodProduct, refreshMockups, draftListing, setPrice, submit, approve, reject, archive, marginPreview, applyMargin, exclusive, get, need, setFlag };
 }
 
 module.exports = { makePipeline, PipelineError, PRINT_W, PRINT_H };

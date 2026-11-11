@@ -477,6 +477,8 @@ automated-versus-manual table, the Redbubble research (verified/assumed, with UR
 
 ## Not yet built
 
+- Fully unattended publishing is only the opt-in per-store autopublish (see `docs/GO-LIVE.md`); there is no scheduler that generates, approves and publishes on its own, and none is planned: a human approval is the gate.
+- A Proposal-to-product link that runs the pipeline for you exists only as the manual "Run to approval" action; proposals do not feed batches automatically.
 - Etsy's transaction/listing fee as API fields (not exposed; computed instead).
 - Clean-up of an orphaned Printify product when a design is regenerated after a live create.
 - The Etsy direct-create path (`createListing` is implemented but wired to no route: it needs taxonomy, shipping profile and images).

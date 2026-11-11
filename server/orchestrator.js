@@ -147,7 +147,7 @@ function makeOrchestrator({ db, pipeline, stages, adapters, llm, spend, settings
     const want = (Array.isArray(b.variantIds) && b.variantIds.length ? b.variantIds : [all[0].id]).map(String);
     const chosen = all.filter(v => want.includes(String(v.id)));
     if (chosen.length !== new Set(want).size) throw new BatchError('one or more variants do not belong to that blueprint/provider', 422, 'bad_variant');
-    return { niche, count, keywords, blueprint, providerId, variantIds: chosen.map(v => v.id), priceCents: Math.round(price * 100), shippingCents: Math.round(shipping * 100), storeId, concurrency };
+    return { niche, count, keywords, blueprint, providerId, variantIds: Array.isArray(b.variantIds) && b.variantIds.length ? chosen.map(v => v.id) : [], priceCents: Math.round(price * 100), shippingCents: Math.round(shipping * 100), storeId, concurrency };
   }
 
   /** Create the batch row and start ideating in the background. Returns the batch (status 'ideating'). */

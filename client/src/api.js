@@ -38,6 +38,7 @@ export const api = {
   refreshMockups: (id) => call('POST', `/api/products/${id}/refresh-mockups`, {}),
   draftListing: (id) => call('POST', `/api/products/${id}/draft-listing`, {}),
   setPrice: (id, b) => call('PATCH', `/api/products/${id}/price`, b),
+  advance: (id) => call('POST', `/api/products/${id}/advance`, {}),
   submit: (id) => call('POST', `/api/products/${id}/submit`, {}),
   approve: (id, token) => call('POST', `/api/products/${id}/approve`, token ? { token } : {}),
   reject: (id, note) => call('POST', `/api/products/${id}/reject`, { note }),
