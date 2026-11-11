@@ -63,6 +63,8 @@ only, no merchant customer data. The blocklist and approval gate exist precisely
 | Purely AI-generated output may not be copyrightable in the US without sufficient human authorship (US Copyright Office guidance). | assumed, unverified (secondary summary). Practical consequence: the shop may not be able to stop copying of a design. |
 | OpenAI's usage policies bar generating infringing or deceptive content. | assumed, unverified: not read. |
 
+**Other image providers (Gemini, xAI, OpenRouter; added 2026-11-11).** Their output-ownership, commercial-use and usage-policy terms were NOT read, so every claim in the table above is equally unverified for them; for OpenRouter the terms of the underlying model's vendor also apply. The same prompt rules, blocklist and approval gate apply to every provider. Read each provider's terms before selling designs made with it.
+
 **What this software does.** The image prompt tells the model: original artwork, no logos, no brand names, no trademarked characters, no
 watermarks (`server/domain/prompts.js`); the brief is blocklist-checked before any spend. The key is BYOK (sealed or env), generation is capped
 per ET day, and the cost table is dated. It does not feed any competitor image into a model.

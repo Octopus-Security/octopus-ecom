@@ -8,6 +8,9 @@ const { fingerprint } = require('./crypto');
 
 const ENV_NAMES = {
   openai: 'OPENAI_API_KEY',
+  gemini: 'GEMINI_API_KEY',
+  xai: 'XAI_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY',
   printify: 'PRINTIFY_API_TOKEN',
   etsy_api_key: 'ETSY_API_KEY',
   etsy_shared_secret: 'ETSY_SHARED_SECRET',

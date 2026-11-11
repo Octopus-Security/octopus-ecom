@@ -35,8 +35,11 @@ Etsy's fees from a versioned schedule (Settings, Fees) and Printify's base cost 
    base cost when a sale happens.
    *Verify:* Printify shows the Etsy shop as connected.
 4. **OWNER: create keys and enter them in the panel** (ecom, top bar, Settings, Credentials; sealed, never shown again):
-   `printify` (API token from Printify account settings), `etsy_api_key`, `etsy_shared_secret`, and `openai` for real images (without it
-   designs are placeholders). Listing copy and proposal text go through cortex once the stack has `INTERNAL_SECRET`; with neither, copy
+   `printify` (API token from Printify account settings), `etsy_api_key`, `etsy_shared_secret`, and one image key for real designs (without one
+   designs are placeholders): `openai`, `gemini` (Google AI Studio key), `xai` (xAI API key) or `openrouter`. Then in Settings, **Image generation**,
+   pick that provider and model (default stays OpenAI until you do); a provider with no key refuses to generate, it never switches to another.
+   Env fallbacks on the stack: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`, `OPENROUTER_API_KEY`. OpenRouter has no default model: type an image
+   model id. Its price is not known in advance, so set a per-image ceiling if 25 cents is wrong. Listing copy and proposal text go through cortex once the stack has `INTERNAL_SECRET`; with neither, copy
    is a stub template. If the Printify account has several shops, also set `PRINTIFY_SHOP_ID` on the stack.
    *Verify:* Settings shows each credential present; the top bar adapters line shows the real adapters, not stubs. Pick a real
    blueprint in *New product* (the list is Printify's catalogue, not "Stub").
@@ -44,7 +47,7 @@ Etsy's fees from a versioned schedule (Settings, Fees) and Printify's base cost 
    *Verify (signed in):* `https://ecom.octopustechnology.net/api/etsy/status` lists the store as `connected` with its shop name. If it
    says `no_shop`, step 1 is not finished; fix it and use "Check shop".
 6. **OWNER: decide the print rule.** The default places the whole design inside the print area ("fit") and refuses a design whose limiting
-   side is under the area. gpt-image-1 tops out at 1024x1536, which is upscaled; such a design gets a `print_review` flag. Choose
+   side is under the area. gpt-image-1 tops out at 1024x1536, which is upscaled (Gemini, xAI and OpenRouter native sizes are not documented; the app records what comes back); such a design gets a `print_review` flag. Choose
    *fit* or *fill* in Settings, or accept the flag and review each design.
 7. **Dry-run one product first (no money).** Run a batch of 1-3 in DRY_RUN, or approve a Proposal and press **Run to approval** on its
    card. Open the card and read it as a buyer: original, no brand or character, tags and title sensible, price above the margin floor.
