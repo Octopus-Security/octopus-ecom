@@ -21,7 +21,10 @@
  *  - Any failure moves the product to `failed` with a reason. EXCEPT a spend-cap refusal: that is a
  *    pause, not a product failure, so the stage is unchanged and a note event is recorded; the caller
  *    gets a 'spend_cap' error and may retry after the cap resets or is raised.
- *  - Regenerate keeps history: every design is a new `designs` row; nothing is deleted.
+ *  - Regenerate keeps history: every design is a new `designs` row. Deleting one design, or an
+ *    unpublished product, is explicit. A dry-run PNG, a generated PNG, and an uploaded PNG are
+ *    kept. Creating the POD product, repricing, and publishing reuse the latest design file and
+ *    do not generate again.
  *  - One operation per product at a time (an in-flight set): a double click must not buy two images.
  */
 const path = require('node:path');
@@ -34,7 +37,8 @@ const { enforceCopy } = require('./domain/etsy-rules');
 const { designPrompt, manualPrompt } = require('./domain/prompts');
 const { fitToArea } = require('./upscale');
 const { readPngSize } = require('./png');
-const { productEvent } = require('./events');
+const { productEvent, systemEvent } = require('./events');
+const { tx } = require('./db');
 const { projectMargin, marginFlags, snapshot } = require('./domain/fees');
 const { loadSchedule } = require('./domain/fee-schedule');
 
@@ -88,6 +92,18 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
   const get = id => db.prepare('SELECT * FROM products WHERE id = ?').get(id);
   const need = id => { const p = get(Number(id)); if (!p) throw new PipelineError(`Product ${id} not found`, 404, 'not_found'); return p; };
   const kw = p => { try { return JSON.parse(p.keywords || '[]'); } catch { return []; } };
+
+  /** Remove a saved design/mockup file by its basename only, after the row commit. A path is never trusted. */
+  function unlinkSaved(subdir, name) {
+    const base = path.basename(String(name || ''));
+    if (!base || base === '.' || base === '..') return;
+    const dir = path.resolve(dataDir || '.', subdir);
+    const file = path.resolve(dir, base);
+    if (file !== path.join(dir, base)) return;
+    try { fs.unlinkSync(file); }
+    catch (e) { if (e.code !== 'ENOENT') log.warn(`[pipeline] could not remove ${subdir}/${base}: ${e.message}`); }
+  }
+  const tableExists = (name) => Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name));
 
   async function exclusive(id, fn) {
     if (busy.has(id)) throw new PipelineError(`Product ${id} is already being worked on`, 409, 'busy');
@@ -231,6 +247,7 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
    * Bring-your-own design: a PNG made elsewhere takes the same path a generated one does (upscale hook, real size read
    * from the PNG header, designs row, early print flag, transition to design_generated). Provenance: source='manual',
    * model='manual', cost 0 (so no `costs` row). Callers sniff the bytes first (routes); this re-checks it is a PNG.
+   * This does not call the image gateway. The print-provider step later uploads this file.
    */
   function attachDesign(id, png, { actor = 'human' } = {}) {
     id = Number(id);
@@ -405,6 +422,7 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
       if (!reprice) guardStage(p, [S.DESIGN, S.MOCKUP, S.FAILED], 'Creating the POD product');
       if (!p.blueprint || !p.print_provider_id) throw new PipelineError('Choose a blueprint and print provider first', 409, 'no_blueprint');
       if (!Number.isInteger(p.list_price_cents) || p.list_price_cents <= 0) throw new PipelineError('Set a list price first (Printify needs one per variant)', 409, 'no_price');
+      // The latest saved file is the print file: a dry-run PNG, a generated one, or an upload. Do not generate here.
       const design = db.prepare('SELECT * FROM designs WHERE product_id = ? ORDER BY id DESC LIMIT 1').get(id);
       if (!design || !design.image_path) throw new PipelineError('The product has no design yet', 409, 'no_design');
       const variantIds = parse(p.pod_variant_ids, []);
@@ -546,6 +564,75 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
   const reject = (id, o = {}) => finish(id, S.REJECTED, 'rejected', o);
   const archive = (id, o = {}) => finish(id, S.ARCHIVED, 'archived', o);
 
+  /** Delete one design file. The product and its stage stay. Cost rows stay (the money was spent). */
+  function removeDesign(id, designId, { actor = 'human' } = {}) {
+    id = Number(id);
+    designId = Number(designId);
+    return exclusive(id, async () => {
+      const p = need(id);
+      if (p.stage === S.PUBLISHED || p.stage === S.LIVE) throw new PipelineError('A published product keeps its designs.', 409, 'published');
+      const row = db.prepare('SELECT * FROM designs WHERE id = ? AND product_id = ?').get(designId, id);
+      if (!row) throw new PipelineError('Design not found', 404, 'not_found');
+      tx(db, () => {
+        db.prepare('DELETE FROM designs WHERE id = ? AND product_id = ?').run(designId, id);
+        productEvent(db, id, { actor, note: `design ${designId} deleted; the file is removed, the spend record stays` });
+      });
+      if (row.image_path) unlinkSaved('images', row.image_path);
+      const left = db.prepare('SELECT COUNT(*) AS n FROM designs WHERE product_id = ?').get(id).n;
+      if (left) earlyPrintFlag(id);
+      else {
+        setFlag(id, 'print_not_ready', null);
+        setFlag(id, 'print_review', null);
+      }
+      return get(id);
+    });
+  }
+
+  /**
+   * Delete an unpublished product and its files. Refuses anything that already exists outside this app
+   * (a real print-provider id, a marketplace listing id, a sale, an uploaded channel). Cost rows are kept
+   * with a null product id so the daily cap still counts the spend. Archive is the path that keeps the record.
+   */
+  function removeProduct(id, { actor = 'human' } = {}) {
+    id = Number(id);
+    return exclusive(id, async () => {
+      const p = need(id);
+      if (p.stage === S.PUBLISHED || p.stage === S.LIVE) throw new PipelineError('A published product cannot be deleted. Archive it instead.', 409, 'published');
+      if (db.prepare('SELECT 1 FROM sales WHERE product_id = ? OR listing_id IN (SELECT id FROM listings WHERE product_id = ?) LIMIT 1').get(id, id)) {
+        throw new PipelineError('This product has sales. It stays in the books.', 409, 'has_sales');
+      }
+      if (db.prepare("SELECT 1 FROM listings WHERE product_id = ? AND external_id IS NOT NULL AND TRIM(external_id) != '' LIMIT 1").get(id)) {
+        throw new PipelineError('This product has a marketplace listing id. Archive it instead of deleting it.', 409, 'has_listing');
+      }
+      if (p.pod_external_id && !String(p.pod_external_id).startsWith('stub-')) {
+        throw new PipelineError('This product exists at the print provider. Archive it instead of deleting it.', 409, 'has_pod');
+      }
+      if (db.prepare("SELECT 1 FROM channel_listings WHERE product_id = ? AND state IN ('uploaded', 'live') LIMIT 1").get(id)) {
+        throw new PipelineError('A channel listing is uploaded or live. Archive the product instead.', 409, 'has_channel');
+      }
+      const designs = db.prepare('SELECT image_path FROM designs WHERE product_id = ?').all(id);
+      const mockups = db.prepare('SELECT file FROM mockups WHERE product_id = ?').all(id);
+      tx(db, () => {
+        db.prepare('DELETE FROM designs WHERE product_id = ?').run(id);
+        db.prepare('DELETE FROM mockups WHERE product_id = ?').run(id);
+        db.prepare('DELETE FROM listings WHERE product_id = ?').run(id);
+        db.prepare('DELETE FROM events WHERE product_id = ?').run(id);
+        db.prepare('DELETE FROM channel_listings WHERE product_id = ?').run(id);
+        db.prepare('UPDATE costs SET product_id = NULL WHERE product_id = ?').run(id);
+        db.prepare('UPDATE proposals SET product_id = NULL WHERE product_id = ?').run(id);
+        db.prepare('UPDATE batch_items SET product_id = NULL WHERE product_id = ?').run(id);
+        if (tableExists('alerts')) db.prepare('DELETE FROM alerts WHERE product_id = ?').run(id);
+        if (tableExists('playbook_ticks')) db.prepare('DELETE FROM playbook_ticks WHERE product_id = ?').run(id);
+        const gone = db.prepare('DELETE FROM products WHERE id = ?').run(id);
+        if (!gone.changes) throw new PipelineError(`Product ${id} not found`, 404, 'not_found');
+        systemEvent(db, { actor, note: `product ${id} deleted` });
+      });
+      for (const d of designs) if (d.image_path) unlinkSaved('images', d.image_path);
+      for (const m of mockups) if (m.file) unlinkSaved('mockups', m.file);
+      return { ok: true, id };
+    });
+  }
+
   function unitEconomics(p) {
     if (!Number.isInteger(p.list_price_cents) || !Number.isInteger(p.pod_base_cost_cents)) return null;
     const floor = settings ? settings.getInt('margin_floor_cents', 200) : 200;
@@ -594,7 +681,7 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
     throw new PipelineError('The product did not reach PENDING_APPROVAL (loop guard).', 500, 'no_convergence');
   }
 
-  return { advance, checkPrint, printRule, addFlags, rescanBlocklist, saveCopy, create, generateDesign, manualDesignPrompt, attachDesign, draftCopy, editCopy, detail, validateInput, PipelineError, selectPod, createPodProduct, refreshMockups, draftListing, setPrice, submit, approve, reject, archive, marginPreview, applyMargin, exclusive, get, need, setFlag };
+  return { advance, checkPrint, printRule, addFlags, rescanBlocklist, saveCopy, create, generateDesign, manualDesignPrompt, attachDesign, draftCopy, editCopy, detail, validateInput, PipelineError, selectPod, createPodProduct, refreshMockups, draftListing, setPrice, submit, approve, reject, archive, removeDesign, removeProduct, marginPreview, applyMargin, exclusive, get, need, setFlag };
 }
 
 module.exports = { makePipeline, PipelineError, PRINT_W, PRINT_H };

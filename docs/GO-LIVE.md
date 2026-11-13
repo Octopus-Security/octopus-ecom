@@ -36,10 +36,13 @@ Etsy's fees from a versioned schedule (Settings, Fees) and Printify's base cost 
    *Verify:* Printify shows the Etsy shop as connected.
 4. **OWNER: create keys and enter them in the panel** (ecom, top bar, Settings, Credentials; sealed, never shown again):
    `printify` (API token from Printify account settings), `etsy_api_key`, `etsy_shared_secret`, and one image key for real designs (without one
-   designs are placeholders): `openai`, `gemini` (Google AI Studio key), `xai` (xAI API key) or `openrouter`. Then in Settings, **Image generation**,
-   pick that provider and model (default stays OpenAI until you do); a provider with no key refuses to generate, it never switches to another.
-   Env fallbacks on the stack: `OPENAI_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`, `OPENROUTER_API_KEY`. OpenRouter has no default model: type an image
-   model id. Its price is not known in advance, so set a per-image ceiling if 25 cents is wrong. Listing copy and proposal text go through cortex once the stack has `INTERNAL_SECRET`; with neither, copy
+   designs are placeholders): `nous` (the Nous Portal subscription token), `gemini` (Google AI Studio key), `xai` (xAI API key) or `openrouter`.
+   The Portal token is not always the chat inference key. Paste it as `nous`. Then in Settings, **Image generation**, pick that provider and model.
+   The default is Nous Klein (`fal-ai/flux-2/klein/9b`). A provider with no key refuses to generate; it never switches to another. A solid colour
+   block means the free placeholder ran because no nous key was set. Env fallbacks on the stack: `NOUS_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`,
+   `OPENROUTER_API_KEY`. `OPENAI_API_KEY` is only the listing-copy fallback when cortex is absent. It is not an image key and has no Credentials row.
+   OpenRouter has no default model: type an image model id. Its price is not known in advance, so set a per-image ceiling if 25 cents is wrong.
+   Listing copy and proposal text go through cortex once the stack has `INTERNAL_SECRET`; with neither, copy
    is a stub template. If the Printify account has several shops, also set `PRINTIFY_SHOP_ID` on the stack.
    *Verify:* Settings shows each credential present; the top bar adapters line shows the real adapters, not stubs. Pick a real
    blueprint in *New product* (the list is Printify's catalogue, not "Stub").
@@ -47,15 +50,21 @@ Etsy's fees from a versioned schedule (Settings, Fees) and Printify's base cost 
    *Verify (signed in):* `https://ecom.octopustechnology.net/api/etsy/status` lists the store as `connected` with its shop name. If it
    says `no_shop`, step 1 is not finished; fix it and use "Check shop".
 6. **OWNER: decide the print rule.** The default places the whole design inside the print area ("fit") and refuses a design whose limiting
-   side is under the area. gpt-image-1 tops out at 1024x1536, which is upscaled (Gemini, xAI and OpenRouter native sizes are not documented; the app records what comes back); such a design gets a `print_review` flag. Choose
-   *fit* or *fill* in Settings, or accept the flag and review each design.
-7. **Dry-run one product first (no money).** Run a batch of 1-3 in DRY_RUN, or approve a Proposal and press **Run to approval** on its
-   card. Open the card and read it as a buyer: original, no brand or character, tags and title sensible, price above the margin floor.
+   side is under the area. A Nous image is at most 1024px on the long side (a 3951×4477 poster asks for 896×1024). Gemini, xAI and OpenRouter
+   native sizes are not documented; the app records what comes back. A small file can fail print coverage even when the old colour-block
+   placeholder looked ready. The file is kept. Upload a PNG that already fills the print area, or review the flag. Do not lower the coverage
+   rule to force a product through. Choose *fit* or *fill* in Settings.
+7. **Dry-run one product first.** Dry run fakes the shops and the print provider. It does not fake Generate: with a nous key, that click buys
+   one image. Upload PNG on the card, or on New product, costs nothing and becomes the print file. A PNG you already like, including one saved
+   during dry run, is reused later. Regenerate is the only new image spend. JPEG is refused: export a PNG. Run a batch of 1-3 in DRY_RUN, or
+   approve a Proposal and press **Run to approval** on its card. Open the card and read it as a buyer: original, no brand or character, tags
+   and title sensible, price above the margin floor.
    *Verify:* the product reaches PENDING_APPROVAL. Expect the flags `pod_cost_estimated` (dry-run cost is an estimate) and, if you did not
    pick sizes/colours, `single_variant` (only the first variant would be sold; choose the variants).
 8. **OWNER: arm live writes.** Settings, DRY RUN off. Type `ARM LIVE WRITES` when asked. A system event is recorded.
    *Verify:* the top bar no longer says DRY RUN: ON.
-9. **Re-create the Printify product with live writes** (card, "Create POD product + mockups"). This reads the real base cost, clears
+9. **Re-create the Printify product with live writes** (card, "Create POD product + mockups"). This uploads the design PNG already saved.
+   It does not generate a new image. It reads the real base cost, clears
    `pod_cost_estimated`, recomputes the margin and voids any earlier approval.
    *Verify:* the card shows a real Printify cost and mockups; a draft product appears in Printify (not yet published).
 10. **OWNER: approve.** Card, Approve, read the summary, confirm.

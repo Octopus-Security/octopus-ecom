@@ -13,6 +13,7 @@ export default function Composer({ onClose, onChanged, onOpen }) {
   const [variants, setVariants] = useState([]); const [chosen, setChosen] = useState([]); const [vNote, setVNote] = useState('');
   const [preview, setPreview] = useState(null);
   const [step, setStep] = useState(-1); const [err, setErr] = useState(''); const [newId, setNewId] = useState(null);
+  const [ownFile, setOwnFile] = useState(null);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
 
   useEffect(() => { api.blueprints().then((r) => setBps(r.blueprints)).catch((e) => setErr(e.message)); }, []);
@@ -45,14 +46,21 @@ export default function Composer({ onClose, onChanged, onOpen }) {
       }
       for (;;) {
         const stage = (await api.product(id)).product.stage;
-        if (stage === 'idea' || stage === 'failed') { s = 1; setStep(1); await api.generateDesign(id); }
+        if (stage === 'idea' || stage === 'failed') {
+          s = 1; setStep(1);
+          if (ownFile) await api.uploadDesign(id, ownFile);
+          else await api.generateDesign(id);
+        }
         else if (stage === 'design_generated') { s = 2; setStep(2); await api.createPod(id); }
         else if (stage === 'mockup_ready') { s = 3; setStep(3); await api.draftListing(id); }
         else break;
         onChanged();
       }
       onOpen(id);
-    } catch (e2) { setErr(`${STEPS[s]}: ${e2.message}`); setStep(-1); onChanged(); }
+    } catch (e2) {
+      const label = (s === 1 && ownFile) ? 'Saving your PNG' : STEPS[s];
+      setErr(`${label}: ${e2.message}`); setStep(-1); onChanged();
+    }
   }
   const busy = step >= 0; const locked = busy || newId !== null;
   const ready = f.brief.trim() && bp && pp && chosen.length && f.listPrice !== '';
@@ -77,7 +85,7 @@ export default function Composer({ onClose, onChanged, onOpen }) {
             <div className="variants">{variants.slice(0, 120).map((v) => (
               <label key={v.id} className="check"><input type="checkbox" checked={chosen.includes(v.id)} onChange={(e) => setChosen(e.target.checked ? [...chosen, v.id] : chosen.filter((x) => x !== v.id))} />
                 {v.title}{Number.isInteger(v.costCents) ? ` - ${dollars(v.costCents)}${v.estimated ? ' (est.)' : ''}` : ''}</label>))}</div>
-            {area && <div className="muted small">Print area {area.position}: {area.width}x{area.height}px (designs are generated for this size)</div>}
+            {area && <div className="muted small">Print area {area.position}: {area.width}x{area.height}px. A generated image is sized for this. An uploaded PNG is checked against it and kept either way.</div>}
             {vNote && <div className="muted small">{vNote}</div>}
           </fieldset>)}
         <div className="row">
@@ -90,11 +98,19 @@ export default function Composer({ onClose, onChanged, onOpen }) {
             {baseCost === null ? <div className="small muted">Printify exposes the base cost only after the product exists; the real margin shows on the card once it is created.</div> : <> &middot; base cost {dollars(baseCost)}</>}
             {preview.flags.map((x) => <span className="flag" key={x.code}>{x.code}</span>)}
           </div>)}
-        {busy && <div className="muted" role="status">{STEPS[step]}... (image generation can take a minute)</div>}
+        <div className="row">
+          <label className={`file-btn ${locked ? 'disabled' : ''}`}>Upload your PNG
+            <input type="file" accept="image/png,.png" disabled={locked} hidden onChange={(e) => { const file = e.target.files && e.target.files[0]; e.target.value = ''; setOwnFile(file || null); }} />
+          </label>
+          {ownFile && <span className="small">{ownFile.name}</span>}
+          {ownFile && <button type="button" className="ghost" disabled={locked} onClick={() => setOwnFile(null)}>Use generation instead</button>}
+        </div>
+        <div className="muted small">{ownFile ? 'This PNG is saved as the print file. Nothing is spent on an image. The print-provider step reuses it.' : 'Or upload a PNG you already have. JPEG is refused: export a PNG. Generate is the only image spend.'}</div>
+        {busy && <div className="muted" role="status">{(ownFile && step === 1 ? 'Saving your PNG' : STEPS[step])}...{ownFile ? '' : ' (image generation can take a minute)'}</div>}
         {err && <div className="banner error" role="alert">{err}{newId !== null ? ' The product is on the board; "Retry" resumes from here.' : ''}</div>}
         <div className="row">
           <button type="button" className="ghost" onClick={onClose} disabled={busy}>Close</button>
-          <button type="submit" disabled={busy || !ready}>{newId !== null ? 'Retry' : 'Generate'}</button>
+          <button type="submit" disabled={busy || !ready}>{newId !== null ? 'Retry' : (ownFile ? 'Use this PNG' : 'Generate')}</button>
         </div>
       </form>
     </div>

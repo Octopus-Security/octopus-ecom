@@ -39,8 +39,14 @@ function fakeFetch(responder) {
     let body; if (init.body) { try { body = JSON.parse(init.body); } catch { body = init.body; } } // form bodies stay strings
     calls.push({ url, method: init.method, headers: init.headers, body });
     const r = await responder(url, init, calls.length);
-    const text = typeof r.body === 'string' ? r.body : JSON.stringify(r.body);
-    return { status: r.status || 200, headers: { get: k => (r.headers || {})[k.toLowerCase()] ?? null }, text: async () => text };
+    const raw = Buffer.isBuffer(r.body) ? r.body : Buffer.from(typeof r.body === 'string' ? r.body : JSON.stringify(r.body));
+    const text = Buffer.isBuffer(r.body) ? '' : raw.toString('utf8');
+    return {
+      status: r.status || 200,
+      headers: { get: k => (r.headers || {})[k.toLowerCase()] ?? null },
+      text: async () => text,
+      arrayBuffer: async () => raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength),
+    };
   };
   fn.calls = calls;
   return fn;

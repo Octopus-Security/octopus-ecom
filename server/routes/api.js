@@ -141,6 +141,11 @@ function router(deps) {
   r.post('/products/:id/advance', wrap(async (req, res) => { res.json({ ok: true, product: await pipe.advance(req.params.id, { actor: actorOf(req) }) }); }));
   r.post('/products/:id/reject', wrap(async (req, res) => { res.json({ ok: true, product: await pipe.reject(req.params.id, { actor: actorOf(req), note: String((req.body || {}).note || '').slice(0, 500) }) }); }));
   r.post('/products/:id/archive', wrap(async (req, res) => { res.json({ ok: true, product: await pipe.archive(req.params.id, { actor: actorOf(req), note: String((req.body || {}).note || '').slice(0, 500) }) }); }));
+  // The design route is more specific than DELETE /products/:id. Neither changes products.stage.
+  r.delete('/products/:id/designs/:designId', wrap(async (req, res) => {
+    res.json({ ok: true, product: await pipe.removeDesign(req.params.id, req.params.designId, { actor: actorOf(req) }) });
+  }));
+  r.delete('/products/:id', wrap(async (req, res) => { res.json(await pipe.removeProduct(req.params.id, { actor: actorOf(req) })); }));
 
   // POST /api/products/:id/approve — two-step confirm. Only a human reaches this route (actorOf is always 'human');
   // the agent rule (autopublish on, DRY_RUN off, no flags) is enforced in stages.transition() for any other caller.

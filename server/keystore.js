@@ -6,7 +6,10 @@
  */
 const { seal, open, fingerprint } = require('./crypto');
 
-const KEY_NAMES = ['openai', 'gemini', 'xai', 'openrouter', 'printify', 'etsy_api_key', 'etsy_shared_secret'];
+// `nous` replaced the OpenAI image row. OPENAI_API_KEY stays an env fallback for listing-copy chat only;
+// this list is what the panel can seal, so there is no openai row. A previously sealed openai value remains
+// in the keys table and credentials.get('openai') can still open it; set() will not write that name.
+const KEY_NAMES = ['nous', 'gemini', 'xai', 'openrouter', 'printify', 'etsy_api_key', 'etsy_shared_secret'];
 
 function makeKeystore(db, secret) {
   return {

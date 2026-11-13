@@ -1,5 +1,5 @@
 'use strict';
-/** OpenAI chat completions, BYOK (keystore 'openai' or OPENAI_API_KEY). Tier -> model: see pricing.js. */
+/** OpenAI chat completions, BYOK via OPENAI_API_KEY (listing-copy fallback). Image generation does not use this key. Tier -> model: see pricing.js. */
 const { createChat } = require('./chat');
 const { DEFAULT_TIERS } = require('./pricing');
 

@@ -69,6 +69,29 @@ test('upload: a print-size PNG becomes a manual design, costs $0 and reaches the
   assert.equal(d.db.prepare('SELECT COUNT(*) n FROM designs WHERE product_id = ?').get(id).n, 2);
 });
 
+test('upload then create-pod reuses the PNG and does not call the image generator', async () => {
+  const id = await product();
+  let gens = 0;
+  const realGen = d.adapters.imagegen.generate;
+  d.adapters.imagegen.generate = async (...a) => { gens += 1; return realGen(...a); };
+  const seen = [];
+  const realPod = d.adapters.pod.createProduct;
+  d.adapters.pod.createProduct = async (opts) => { seen.push(opts); return realPod(opts); };
+  try {
+    assert.equal((await up(id, await full(id))).status, 200);
+    const pod = await j('POST', `/api/products/${id}/create-pod`, {});
+    assert.equal(pod.body.product.stage, 'mockup_ready');
+    assert.equal(gens, 0, 'an upload is the print file; create-pod must not generate');
+    const design = d.db.prepare('SELECT image_path FROM designs WHERE product_id = ? ORDER BY id DESC LIMIT 1').get(id);
+    assert.equal(seen.length, 1);
+    assert.equal(seen[0].imagePath, path.resolve(d.dataDir, 'images', design.image_path));
+    assert.equal(design && d.db.prepare('SELECT source FROM designs WHERE product_id = ? ORDER BY id DESC LIMIT 1').get(id).source, 'manual');
+  } finally {
+    d.adapters.imagegen.generate = realGen;
+    d.adapters.pod.createProduct = realPod;
+  }
+});
+
 test('upload: non-images, JPEG, empty and wrong-extension bodies are refused by magic bytes', async () => {
   const id = await product();
   assert.equal((await up(id, Buffer.from('hello, not an image'), 'image/png')).status, 415);

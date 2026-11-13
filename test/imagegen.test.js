@@ -107,13 +107,22 @@ test('png codec round-trips RGB and RGBA, and decodes other filters', () => {
   assert.throws(() => decodePng(require('../server/png').solidPng(4, 4)), /bit depth/);
 });
 
-test('imagegen routes real when a key exists (even in DRY_RUN); stub otherwise', async () => {
+test('imagegen routes real when a nous key exists (even in DRY_RUN); an OpenAI key does not select it', async () => {
   const d0 = makeDeps();
   assert.equal(d0.adapters.imagegen.describe().methods.generate, 'stub');
-  const f = fakeFetch(() => ok(gradientPng(8, 12)));
-  const d1 = makeDeps({ OPENAI_API_KEY: KEY }, { http: fakeHttp(f), upscale: null });
+  assert.equal(makeDeps({ OPENAI_API_KEY: KEY }).adapters.imagegen.describe().methods.generate, 'stub');
+  const bytes = gradientPng(8, 12);
+  const f = fakeFetch((url) => {
+    const u = String(url);
+    if (u.includes('fal.media')) return { body: bytes };
+    if (u.endsWith('/status')) return { body: { status: 'COMPLETED' } };
+    if (u.includes('/requests/')) return { body: { images: [{ url: 'https://v3.fal.media/files/x.png' }] } };
+    return { body: { request_id: 'req_ok1' } };
+  });
+  const d1 = makeDeps({ NOUS_API_KEY: 'portal-token-123456789' }, { http: fakeHttp(f), upscale: null });
   assert.equal(d1.dryRun.isOn(), true);
   assert.equal(d1.adapters.imagegen.describe().methods.generate, 'real');
   const out = await d1.adapters.imagegen.generate('x', { width: 8, height: 12 });
-  assert.equal(out.costCents, 25);
+  assert.equal(out.model, 'fal-ai/flux-2/klein/9b');
+  assert.equal(f.calls[0].headers.Authorization, 'Key portal-token-123456789');
 });

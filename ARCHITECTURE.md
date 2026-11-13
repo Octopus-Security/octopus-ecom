@@ -104,25 +104,28 @@ injectable). Non-GET requests are retried only on 429, never on 5xx or timeout, 
 avoid double-creating a listing. Adapter failures are caught by the pipeline and
 move the product to `failed`; they never crash the process.
 
-As of M1, **ImageGen** (OpenAI Images by default; Gemini, xAI and OpenRouter selectable, see below) and **ListingCopy** (via the LLM interface) have real
+As of M1, **ImageGen** (Nous Portal by default; Gemini, xAI and OpenRouter selectable, see below) and **ListingCopy** (via the LLM interface) have real
 implementations and are chosen whenever a key exists, even in DRY_RUN (generation is spend, not a
-marketplace write). Printify is real as of M2 (below); Etsy (M3) is real; trend research remains a stub/scaffold; Printful is a
+marketplace write). An uploaded PNG does not call ImageGen. Printify is real as of M2 (below); Etsy (M3) is real; trend research remains a stub/scaffold; Printful is a
 signature-only scaffold that stays unimplemented.
 
-### Image providers (added 2026-11-11)
+### Image providers (updated 2026-11-13)
 
 `adapters/imagegen/index.js` picks the real adapter PER CALL from Settings (table `settings`: `image_provider`,
 `image_model_<provider>`, `image_resolution`, `image_max_cents`), then env (`IMAGE_PROVIDER`, `IMAGE_MODEL`), then the default,
-which is still OpenAI `gpt-image-1`, so nothing changes until the owner picks another. All four adapters share the interface
+which is Nous Portal `fal-ai/flux-2/klein/9b`. `openai` is not a selectable image provider. A stored `image_provider=openai`
+falls through to nous. `adapters/imagegen/openai.js` stays in the tree for its own tests. Listing copy can still fall back to
+`OPENAI_API_KEY`; that env var is not an image credential and is not a Credentials row. The four adapters share the interface
 (`implemented`, `estimate`, `generate`), call `spend.assertCanSpend(estimate)` BEFORE any request, and return PNGs through
 `fitToArea` (native vs upscaled size recorded honestly). A chosen provider with no key throws a clear error; it never falls back to
-another paid provider (only the default, openai with no key, still uses the free stub, as before).
+another paid provider (only the default, nous with no key, still uses the free stub).
 
-| Provider (key / env) | Endpoint | Models | Docs (read 2026-11-11) |
+| Provider (key / env) | Endpoint | Models | Docs |
 |---|---|---|---|
-| `gemini` / `GEMINI_API_KEY` | `POST generativelanguage.googleapis.com/v1beta/interactions` | `gemini-3.1-flash-image` (default), `gemini-nano-banana-2.1`, `gemini-3.1-flash-lite-image`, `gemini-3-pro-image`, `gemini-2.5-flash-image` (deprecated) | https://aistudio.google.com/docs/image-generation , prices https://aistudio.google.com/docs/pricing |
-| `xai` / `XAI_API_KEY` | `POST api.x.ai/v1/images/generations` | `grok-imagine-image-2.0` (default), `grok-imagine-image` | https://docs.x.ai/developers/model-capabilities/images/generation , https://docs.x.ai/developers/pricing |
-| `openrouter` / `OPENROUTER_API_KEY` | `POST openrouter.ai/api/v1/images` | any image model id, chosen in Settings (no default) | https://openrouter.ai/docs/features/multimodal/image-generation |
+| `nous` / `NOUS_API_KEY` | `POST https://fal-queue-gateway.nousresearch.com/{model}` | `fal-ai/flux-2/klein/9b` (default), `fal-ai/flux-2-pro`, `fal-ai/qwen-image`, `fal-ai/ideogram/v3` | Hermes tool gateway, read 2026-11-13. Auth is `Authorization: Key <portal token>`, not Bearer. |
+| `gemini` / `GEMINI_API_KEY` | `POST generativelanguage.googleapis.com/v1beta/interactions` | `gemini-3.1-flash-image` (default), `gemini-nano-banana-2.1`, `gemini-3.1-flash-lite-image`, `gemini-3-pro-image`, `gemini-2.5-flash-image` (deprecated) | https://aistudio.google.com/docs/image-generation , prices https://aistudio.google.com/docs/pricing (read 2026-11-11) |
+| `xai` / `XAI_API_KEY` | `POST api.x.ai/v1/images/generations` | `grok-imagine-image-2.0` (default), `grok-imagine-image` | https://docs.x.ai/developers/model-capabilities/images/generation , https://docs.x.ai/developers/pricing (read 2026-11-11) |
+| `openrouter` / `OPENROUTER_API_KEY` | `POST openrouter.ai/api/v1/images` | any image model id, chosen in Settings (no default) | https://openrouter.ai/docs/features/multimodal/image-generation (read 2026-11-11) |
 
 Verified vs assumed is in each adapter's header comment. Not verified anywhere: the raw REST response of Gemini's Interactions API (only SDK
 samples were documented; parsing is tolerant), xAI's synchronous `b64_json` response (taken from the OpenAI-SDK sample), Gemini's `4:5`
@@ -132,38 +135,41 @@ xAI `2k` is estimated at double (the page does not say it costs more), and OpenR
 uses a flat ceiling per image (default 25 cents, `image_max_cents` / `IMAGE_MAX_CENTS`) and the recorded cost is the response's `usage.cost`.
 All three err HIGH because the estimate feeds the daily cap.
 
-**Nous Research has no image generation to integrate.** No Nous inference-API image endpoint is documented: the Hermes Agent docs
-(https://hermes-agent.nousresearch.com/docs/user-guide/features/image-generation, read 2026-11-11) say image generation for subscribers goes
-through a Tool Gateway (FAL models, Krea) and that "Nous Portal proxies the chat-completions protocol only". The Portal's own API docs could not
-be fetched (`inference-docs.nousresearch.com` did not resolve, `portal.nousresearch.com/api-docs` returned 429), so "text-only" is the documented
-reading, not a confirmed one. No adapter was written.
+**Nous Portal images** go through the FAL tool gateway, not the chat inference API. Submit `POST {origin}/{model}` with the FAL queue body.
+The response carries `request_id`, `status_url` and `response_url`. Poll until `COMPLETED` (`IN_QUEUE`, `IN_PROGRESS`; `FAILED` is an error).
+The result is `images[].url`. Only status and result URLs whose host is exactly `fal-queue-gateway.nousresearch.com` are used; anything else
+is rebuilt on that origin. Image bytes are downloaded only from `fal.media` or `*.fal.media`, with no key, and a redirect is refused.
+The print request snaps the short side to a multiple of 16 with the long side at 1024 (a 3951×4477 poster asks for 896×1024). The gateway
+returns no price. The app records a ceiling before any HTTP call (Klein 1 cent per megapixel, pro 3, qwen 2, ideogram a flat 9). Dry run still
+buys that one image when Generate is clicked and a key is set. Upload spends nothing and does not call the gateway. Creating the print-provider
+product, repricing, and publishing upload the latest saved file (a dry-run PNG, a generated one, or an upload) and do not generate another image.
+Mockups and the base-cost dollar stay estimates until live writes create a real Printify product. A small PNG can fail print coverage; the file
+is kept. The coverage rule is not loosened. The chat inference key is not proven to be the Portal token this gateway wants (`Authorization: Key`).
+The 2026-11-11 note that Nous had no image generation is superseded by the Hermes tool-gateway docs read 2026-11-13. No generation was spent to check the token.
 
 ### M1: image generation, copy, pipeline
 
-**ImageGen (`adapters/imagegen/openai.js`).** `POST /v1/images/generations` with `gpt-image-1`
-(`IMAGE_MODEL`, `IMAGE_QUALITY` default `high`). It asks for the largest size the model supports
-in the requested orientation (portrait 1024x1536 for the 4500x5400 default print area), decodes
-`b64_json`, and runs the pluggable **upscale hook** (`server/upscale.js`, interface documented
-there). The default hook is a pure-JS bilinear resample (own PNG decode/encode in `server/png.js`,
-no dependencies); it fits INSIDE the target keeping aspect ratio, so 1024x1536 becomes **3600x5400,
-not 4500x5400**, and it adds pixels, not detail. The design row stores the REAL size (`width`,
-`height`, read back from the PNG header, never from the hook's claim) plus `native_width/height`
-and `upscale_method`; print-readiness (M4) can reject on the real size. `IMAGE_UPSCALE=off` keeps
-the native size. Cost comes from the dated table in `adapters/imagegen/pricing.js`, rounded up to a
-cent; an unpriced model/quality/size is refused rather than guessed.
+**ImageGen (`adapters/imagegen/nous.js`).** The default. See the table above. The OpenAI Images module
+(`adapters/imagegen/openai.js`, `gpt-image-1`) is not selectable. Every provider still runs the pluggable
+**upscale hook** (`server/upscale.js`). The default hook is a pure-JS bilinear resample (own PNG decode/encode
+in `server/png.js`, no dependencies); it fits INSIDE the target keeping aspect ratio, so a 1024-long image
+does not become a 4500×5400 print file, and it adds pixels, not detail. The design row stores the REAL size
+(`width`, `height`, read back from the PNG header) plus `native_width/height` and `upscale_method`.
+Print-readiness (M4) can reject on the real size. `IMAGE_UPSCALE=off` keeps the native size. An unpriced
+model is refused rather than guessed.
 
 **Bring your own design (no image credits).** `GET /api/products/:id/design-prompt` returns the exact `designPrompt()` text the
 pipeline would send plus the blueprint's target size, aspect and extra guard rails (`manualPrompt` in `domain/prompts.js`). The
 operator makes the image elsewhere and `POST /api/products/:id/upload-design` takes the PNG as the raw body (25 MB cap, type decided
 by magic bytes; JPEG is recognised and refused with a "export as PNG" message, because the upscale and print-readiness paths read PNG
-only). `pipeline.attachDesign` then runs the same `fitToArea` (upscale hook, real size from the header) as the image adapter,
+only). New product can send that file instead of generating, and the product card has Upload PNG beside Generate. `pipeline.attachDesign` then runs the same `fitToArea` (upscale hook, real size from the header) as the image adapter,
 writes a `designs` row with `source='manual'`, `model='manual'`, cost 0 (no `costs` row), raises the same early `print_not_ready`
 flag and moves the product to `design_generated`. `designs.source` is null/`generated` for adapter output, so the listing's
 AI-disclosure handling can tell them apart; an upload is NOT assumed to be human-made (it may come from an AI tool).
 
-**LLM (`server/llm/`).** `openai` (BYOK) and `openai-compatible` (`LLM_BASE_URL` + optional
-`LLM_API_KEY`) share `chat.js`; the provider is resolved per call, so a key saved in the panel works
-without a restart. Model per tier: `LLM_MODEL_<TIER>` > the `ROUTER_PATH` table (read-only, `TIERS` +
+**LLM (`server/llm/`).** `openai` (BYOK via `OPENAI_API_KEY`, or a legacy sealed `openai` row) and `openai-compatible` (`LLM_BASE_URL` + optional
+`LLM_API_KEY`) share `chat.js`; the provider is resolved per call, so the env key is picked up
+without a restart. Images do not use this key. Model per tier: `LLM_MODEL_<TIER>` > the `ROUTER_PATH` table (read-only, `TIERS` +
 `ALIASES`) > built-in defaults (`gpt-4.1-nano` / `-mini` / `gpt-4.1`). Cost = reported token usage x the
 dated table in `llm/pricing.js` (override unknown models with `LLM_PRICE_IN_PER_M`/`_OUT_PER_M`; an
 unknown unpriced model is costed at a conservative worst case and reported `priceAssumed`).

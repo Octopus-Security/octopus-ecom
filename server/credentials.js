@@ -7,6 +7,8 @@
 const { fingerprint } = require('./crypto');
 
 const ENV_NAMES = {
+  nous: 'NOUS_API_KEY',
+  // Listing-copy fallback. Not a panel row. A sealed openai value from before the rename still opens.
   openai: 'OPENAI_API_KEY',
   gemini: 'GEMINI_API_KEY',
   xai: 'XAI_API_KEY',

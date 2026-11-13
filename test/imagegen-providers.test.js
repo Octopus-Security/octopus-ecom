@@ -99,7 +99,7 @@ function wired(env, fetchImpl) {
   return makeDeps(env, { http: fakeHttp(fetchImpl), upscale: null });
 }
 
-test('default selection is unchanged: openai; no keys means the stub, with no request', async () => {
+test('default selection is nous; no key means the stub, with no request', async () => {
   const f = fakeFetch(() => ({ body: {} }));
   const d = wired({}, f);
   assert.equal(d.adapters.imagegen.describe().methods.generate, 'stub');
@@ -114,7 +114,7 @@ test('provider selection routes to that provider; the key of ANOTHER provider is
   await d.adapters.imagegen.generate('x', { width: 8, height: 12 });
   assert.equal(f.calls[0].url, 'https://api.x.ai/v1/images/generations');
   assert.equal(f.calls[0].headers.Authorization, 'Bearer xai-key-123456789');
-  d.settings.set('image_provider', 'gemini'); // OpenAI and xAI keys exist, Gemini does not
+  d.settings.set('image_provider', 'gemini'); // listing-copy OpenAI key and xAI key exist, Gemini does not
   await assert.rejects(d.adapters.imagegen.generate('x', { width: 8, height: 12 }), /"gemini" is selected but no Gemini key/);
   assert.equal(f.calls.length, 1, 'no fall back to another paid provider');
   d.keystore.set('gemini', 'gem-key-123456789');
@@ -126,21 +126,25 @@ test('provider selection routes to that provider; the key of ANOTHER provider is
 test('settings API: choose provider and model, validated; env fallback keys listed; model per provider', async () => {
   const d = wired({ GEMINI_API_KEY: 'gem-env-123456789' }, fakeFetch(() => ({ body: geminiBody() })));
   const names = d.credentials.status().map(c => c.name);
-  for (const n of ['gemini', 'xai', 'openrouter']) assert.ok(names.includes(n));
+  for (const n of ['nous', 'gemini', 'xai', 'openrouter']) assert.ok(names.includes(n));
+  assert.equal(names.includes('openai'), false, 'openai is listing-copy env only, not a panel row');
+  assert.equal(d.credentials.status().find(c => c.name === 'nous').envVar, 'NOUS_API_KEY');
   assert.equal(d.credentials.status().find(c => c.name === 'gemini').envVar, 'GEMINI_API_KEY');
   assert.equal(d.credentials.status().find(c => c.name === 'xai').envVar, 'XAI_API_KEY');
   assert.equal(d.credentials.status().find(c => c.name === 'openrouter').envVar, 'OPENROUTER_API_KEY');
   const { resolveSelection } = require('../server/adapters/imagegen');
-  assert.deepEqual(resolveSelection(d).provider, 'openai');
+  assert.equal(resolveSelection(d).provider, 'nous');
   d.settings.set('image_provider', 'gemini'); d.settings.set('image_model_gemini', 'gemini-3-pro-image');
   assert.equal(resolveSelection(d).model, 'gemini-3-pro-image');
   d.settings.set('image_provider', 'bogus');
-  assert.equal(resolveSelection(d).provider, 'openai', 'a bad stored value falls back to the default');
+  assert.equal(resolveSelection(d).provider, 'nous', 'a bad stored value falls back to the default');
+  d.settings.set('image_provider', 'openai');
+  assert.equal(resolveSelection(d).provider, 'nous', 'a stored openai image provider falls through to nous');
 });
 
 test('docker-compose passes every new env var (an env var only exists if compose passes it)', () => {
   const compose = fs.readFileSync(path.join(__dirname, '..', 'docker-compose.yml'), 'utf8');
-  for (const v of ['GEMINI_API_KEY', 'XAI_API_KEY', 'OPENROUTER_API_KEY', 'IMAGE_PROVIDER', 'IMAGE_MAX_CENTS']) assert.match(compose, new RegExp(`- ${v}=\\$\\{${v}:-\\}`));
+  for (const v of ['NOUS_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'XAI_API_KEY', 'OPENROUTER_API_KEY', 'IMAGE_PROVIDER', 'IMAGE_MAX_CENTS']) assert.match(compose, new RegExp(`- ${v}=\\$\\{${v}:-\\}`));
 });
 
 test('GET/POST /api/settings: image provider is listed, validated and saved; defaults unchanged', async () => {
@@ -151,8 +155,12 @@ test('GET/POST /api/settings: image provider is listed, validated and saved; def
   const j = async (method, url, body) => { const r = await fetch(base + url, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined }); return { status: r.status, body: await r.json().catch(() => null) }; };
   try {
     const s0 = (await j('GET', '/api/settings')).body.image;
-    assert.equal(s0.provider, 'openai'); assert.deepEqual(s0.providers.map(p => p.id), ['openai', 'gemini', 'xai', 'openrouter']);
+    assert.equal(s0.provider, 'nous'); assert.deepEqual(s0.providers.map(p => p.id), ['nous', 'gemini', 'xai', 'openrouter']);
     assert.equal((await j('POST', '/api/settings', { imageProvider: 'dalle' })).status, 400);
+    assert.equal((await j('POST', '/api/settings', { imageProvider: 'openai' })).status, 400);
+    assert.equal((await j('POST', '/api/settings', { imageProvider: 'nous', imageModel: 'fal-ai/flux-2/klein/9b' })).status, 200);
+    assert.equal((await j('GET', '/api/settings')).body.image.model, 'fal-ai/flux-2/klein/9b');
+    assert.equal((await j('POST', '/api/settings', { imageProvider: 'nous', imageModel: 'gpt-image-1' })).status, 400);
     assert.equal((await j('POST', '/api/settings', { imageProvider: 'xai', imageModel: 'not-a-model' })).status, 400);
     assert.equal((await j('POST', '/api/settings', { imageProvider: 'xai', imageModel: 'grok-imagine-image', imageResolution: '1k' })).status, 200);
     const s1 = (await j('GET', '/api/settings')).body.image;

@@ -161,7 +161,7 @@ test('context builder: small, structured, no credentials, no conversations, fees
   const t = new Date().toISOString();
   for (let i = 0; i < 30; i++) d.db.prepare('INSERT INTO products(stage,brief,niche,title,list_price_cents,projected_margin_cents,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)').run(i % 2 ? 'idea' : 'draft_ready', 'b'.repeat(300), 'cats', `Cat mug ${i} ${'x'.repeat(200)}`, 2400, 612, t, t);
   d.db.prepare('INSERT INTO plan_conversations(owner,title,tier,created_at,updated_at) VALUES(?,?,?,?,?)').run('alice', 'SECRET-CONVO', 'standard', t, t);
-  d.credentials.set && d.credentials.set('openai', 'sk-test-' + 'Z'.repeat(30));
+  d.credentials.set && d.credentials.set('nous', 'sk-test-' + 'Z'.repeat(30));
   const ctx = buildPlanContext({ db: d.db, settings: d.settings, spend: d.spend });
   assert.ok(ctx.length <= MAX_CHARS, `${ctx.length} chars`);
   assert.match(ctx, /idea 15, draft_ready 15/); assert.match(ctx, /\$6\.12/);

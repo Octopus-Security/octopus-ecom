@@ -43,7 +43,8 @@ test('provider is resolved per call: a key saved later switches stub -> openai w
   const f = fakeFetch(() => chat('ok'));
   const { d, llm } = llmWith({}, f);
   assert.equal(llm.describe().provider, 'stub');
-  d.keystore.set('openai', KEY);
+  // Listing copy still reads OPENAI_API_KEY. The panel no longer seals a credential named openai.
+  d.env.OPENAI_API_KEY = KEY;
   assert.equal(llm.describe().provider, 'openai');
   await llm.complete({ prompt: 'x' }); assert.equal(f.calls.length, 1);
 });

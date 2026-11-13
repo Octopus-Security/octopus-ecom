@@ -1,20 +1,23 @@
 'use strict';
 const { routeAdapter } = require('../route');
 const { createStub } = require('./stub');
-const { createOpenAiImages } = require('./openai');
+const { createNousImages } = require('./nous');
 const { createGeminiImages } = require('./gemini');
 const { createXaiImages } = require('./xai');
 const { createOpenRouterImages } = require('./openrouter');
 const { PROVIDERS, PROVIDER_IDS } = require('./providers');
 const { bilinearUpscale } = require('../../upscale');
 
-/** The provider/model/resolution in force NOW: Settings (DB) over env over the built-in default (openai, as before). */
+/** The provider/model/resolution in force NOW: Settings (DB) over env over the built-in default (nous). */
 function resolveSelection({ cfg, settings }) {
   const get = k => (settings ? settings.get(k, '') : '') || '';
   const stored = get('image_provider');
-  const provider = PROVIDER_IDS.includes(stored) ? stored : (PROVIDER_IDS.includes(cfg.image.provider) ? cfg.image.provider : 'openai');
+  const provider = PROVIDER_IDS.includes(stored) ? stored : (PROVIDER_IDS.includes(cfg.image.provider) ? cfg.image.provider : 'nous');
+  const known = PROVIDERS[provider];
   const modelStored = get(`image_model_${provider}`);
-  const model = modelStored || (provider === 'openai' ? cfg.image.model : PROVIDERS[provider].defaultModel);
+  const envModel = (cfg.image && cfg.image.model) || '';
+  const envOk = envModel && (known.freeText || known.models.includes(envModel));
+  const model = modelStored || (envOk ? envModel : known.defaultModel) || '';
   const resolution = get('image_resolution') || '';
   const maxCents = Number(get('image_max_cents')) || cfg.image.maxCents || undefined;
   return { provider, model, resolution, maxCents };
@@ -24,14 +27,16 @@ function create({ cfg, credentials, isDryRun, http, log, spend, upscale, setting
   const hook = upscale !== undefined ? upscale : (cfg.image.upscale ? bilinearUpscale : null);
   const common = { http, credentials, log, dataDir: cfg.dataDir, spend, upscale: hook };
   // One real adapter per call: the selection can change in Settings at runtime. A chosen provider with no key FAILS (below);
-  // it never falls back to another paid provider. Only the default (openai, no key) keeps the old stub behaviour.
+  // it never falls back to another paid provider. Only the default (nous, no key) keeps the free stub.
+  // openai.js stays in the tree for its own tests; it is not a selectable image provider. Listing copy still
+  // falls back to OPENAI_API_KEY through the LLM, which is a different credential path.
   const build = () => {
     const sel = resolveSelection({ cfg, settings });
     switch (sel.provider) {
       case 'gemini': return createGeminiImages({ ...common, model: sel.model, resolution: sel.resolution });
       case 'xai': return createXaiImages({ ...common, model: sel.model, resolution: sel.resolution });
       case 'openrouter': return createOpenRouterImages({ ...common, model: sel.model, ceilingCents: sel.maxCents });
-      default: return createOpenAiImages({ ...common, model: sel.model, quality: cfg.image.quality });
+      default: return createNousImages({ ...common, model: sel.model });
     }
   };
   const real = {
@@ -45,7 +50,7 @@ function create({ cfg, credentials, isDryRun, http, log, spend, upscale, setting
     kind: 'imagegen', stub: createStub({ dataDir: cfg.dataDir }), real,
     hasCredential: () => {
       const { provider } = resolveSelection({ cfg, settings });
-      return provider === 'openai' ? credentials.has('openai') : true; // non-default choice: go real and fail loudly if keyless
+      return provider === 'nous' ? credentials.has('nous') : true; // non-default choice: go real and fail loudly if keyless
     },
     isDryRun, log,
   });

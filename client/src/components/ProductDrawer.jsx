@@ -132,26 +132,38 @@ export default function ProductDrawer({ id, onClose, onChanged, askConfirm, onOp
           {st === 'PENDING_APPROVAL' && <button className={p.flags.length ? 'danger' : ''} disabled={!!busy} onClick={approve}>Approve...</button>}
           {['mockup_ready', 'listing_drafted', 'PENDING_APPROVAL', 'approved', 'design_generated'].includes(st) && <button className="ghost" disabled={!!busy} onClick={() => ask('Reject this product?', `Reject product #${p.id}. It leaves the pipeline; it can only be archived afterwards.`, () => api.reject(id))}>Reject...</button>}
           {!['archived', 'published', 'live'].includes(st) && <button className="ghost" disabled={!!busy} onClick={() => ask('Archive this product?', `Archive product #${p.id}. Archived products cannot be moved again.`, () => api.archive(id))}>Archive...</button>}
+          {!['published', 'live'].includes(st) && <button className="danger" disabled={!!busy} onClick={() => askConfirm({ title: 'Delete this product?', summary: `Delete product #${p.id} and its design files. This cannot be undone. A published product, a sale, a marketplace listing id, or a real print-provider product cannot be deleted. Archive keeps the record.`, danger: true, run: async () => { await api.removeProduct(id); onClose(); onChanged(); } })}>Delete product...</button>}
         </div>
       </section>
 
       <section>
         <h4>Brief</h4>
         <textarea rows={4} value={brief} maxLength={2000} onChange={(e) => setBrief(e.target.value)} disabled={!canRegen} />
+        <div className="muted small">The latest saved PNG is the print file. The print-provider step and publishing reuse it, including after dry run is turned off. Generate and Regenerate are the only image spends. An uploaded PNG is kept and costs nothing.</div>
         <div className="row">
           <button disabled={!canRegen || !brief.trim() || !!busy} onClick={() => run('design', () => api.generateDesign(id, brief))}>
             {busy === 'design' ? 'Generating...' : p.stage === 'idea' || p.stage === 'failed' ? 'Generate design' : 'Regenerate design'}
           </button>
-          <span className="muted small">{d.designs.length} design{d.designs.length === 1 ? '' : 's'} kept</span>
-        </div>
-        <h4>Bring your own design</h4>
-        <div className="muted small">No image credits? Copy the prompt, make the image in another tool, then upload the PNG. It goes through the same print-readiness check; cost is $0 and it is recorded as a manual design.</div>
-        <div className="row">
-          <button className="ghost" disabled={!!busy} onClick={async () => { try { const r = await api.designPrompt(id); setManual(r); setNote(''); } catch (e) { setErr(e.message); } }}>Show prompt</button>
-          <label className="ghost">Upload design (PNG)
-            <input type="file" accept="image/png" disabled={!canRegen || !!busy} style={{ display: 'none' }}
+          <label className={`file-btn ${!canRegen || busy ? 'disabled' : ''}`}>Upload PNG
+            <input type="file" accept="image/png,.png" disabled={!canRegen || !!busy} hidden
               onChange={(e) => { const f = e.target.files && e.target.files[0]; e.target.value = ''; if (f) run('upload', () => api.uploadDesign(id, f)); }} />
           </label>
+          <span className="muted small">{d.designs.length} design{d.designs.length === 1 ? '' : 's'} kept</span>
+        </div>
+        {!['published', 'live'].includes(st) && d.designs.length > 0 && (
+          <ul className="design-list">
+            {d.designs.map((des) => (
+              <li key={des.id} className="row">
+                <span className="small">#{des.id} {des.width}x{des.height} {des.source === 'manual' ? 'uploaded' : (des.model || '')}</span>
+                <button type="button" className="ghost" disabled={!!busy} onClick={() => ask('Delete this design?', `Delete design #${des.id} and its PNG. The product stays, and any other design stays. Spend already recorded stays on the daily cap.`, () => api.removeDesign(id, des.id))}>Delete</button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <h4>Prompt for another tool</h4>
+        <div className="muted small">Copy the prompt, make a PNG elsewhere, then use Upload PNG. JPEG is refused: export a PNG. The file goes through the same print check and is recorded as a manual design.</div>
+        <div className="row">
+          <button className="ghost" disabled={!!busy} onClick={async () => { try { const r = await api.designPrompt(id); setManual(r); setNote(''); } catch (e) { setErr(e.message); } }}>Show prompt</button>
         </div>
         {manual && (<>
           <textarea readOnly rows={7} value={manual.text} onFocus={(e) => e.target.select()} />

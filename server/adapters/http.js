@@ -63,13 +63,19 @@ function makeHttp({
     let timer;
     const timedOut = new Promise((_, rej) => { timer = setTimeout(() => { rej(new HttpError(`timed out after ${opts.timeoutMs}ms`, { host: opts.host })); ctl.abort(); }, opts.timeoutMs); });
     try {
-      const res = await Promise.race([fetchImpl(url, { method: opts.method, headers: opts.headers, body: opts.body, signal: ctl.signal }), timedOut]);
+      const res = await Promise.race([fetchImpl(url, { method: opts.method, headers: opts.headers, body: opts.body, signal: ctl.signal, redirect: opts.redirect }), timedOut]);
+      // A binary success must not go through text(): that decodes bytes as a string and corrupts a PNG.
+      // Errors stay text so the message can include a short body. redirect:'manual' is the caller's choice.
+      if (opts.binary && res.status >= 200 && res.status < 300) {
+        const bytes = Buffer.from(await Promise.race([res.arrayBuffer(), timedOut]));
+        return { res, text: '', bytes };
+      }
       const text = await Promise.race([res.text(), timedOut]);
-      return { res, text };
+      return { res, text, bytes: null };
     } finally { clearTimeout(timer); }
   }
 
-  /** request(url, {method, headers, json, body, idempotent, ratePerSec, timeoutMs, maxRetries}) -> {status, ok, headers, text, json} */
+  /** request(url, {method, headers, json, body, binary, redirect, idempotent, ratePerSec, timeoutMs, maxRetries}) -> {status, ok, headers, text, bytes, json} */
   async function request(url, o = {}) {
     const u = new URL(url);
     const method = (o.method || 'GET').toUpperCase();
@@ -78,7 +84,7 @@ function makeHttp({
     let body = o.body;
     if (o.json !== undefined) { body = JSON.stringify(o.json); headers['Content-Type'] = headers['Content-Type'] || 'application/json'; }
     const retries = o.maxRetries ?? maxRetries;
-    const opts = { method, headers, body, host: u.host, timeoutMs: o.timeoutMs ?? timeoutMs };
+    const opts = { method, headers, body, host: u.host, timeoutMs: o.timeoutMs ?? timeoutMs, binary: o.binary === true, redirect: o.redirect };
     const where = `${method} ${u.host}${u.pathname}`; // no query string: it can carry tokens
 
     for (let attempt = 0; ; attempt++) {
@@ -91,13 +97,18 @@ function makeHttp({
       const retryable = err
         ? idempotent
         : status === 429 || (status >= 500 && idempotent);
-      if (!err && status < 400) {
+      if (!err && status >= 200 && status < 300) {
         const text = out.text;
-        return { status, ok: true, headers: out.res.headers, text, json: () => JSON.parse(text) };
+        return { status, ok: true, headers: out.res.headers, text, bytes: out.bytes, json: () => JSON.parse(text) };
+      }
+      // redirect:'manual' leaves a 3xx here. Following it could send a credential to another host.
+      if (!err && o.redirect === 'manual' && status >= 300 && status < 400) {
+        throw new HttpError(`${where} redirected; refusing to follow`, { status, body: '', host: u.host });
       }
       if (!retryable || attempt >= retries) {
         log.warn(`[http] ${where} failed: ${err ? err.message : status} (attempt ${attempt + 1})`);
-        throw err instanceof HttpError ? err : new HttpError(err ? `${where}: ${err.message}` : `${where} -> HTTP ${status}`, { status, body: out ? out.text.slice(0, 500) : '', host: u.host });
+        const bodyText = out && out.text ? out.text.slice(0, 500) : '';
+        throw err instanceof HttpError ? err : new HttpError(err ? `${where}: ${err.message}` : `${where} -> HTTP ${status}`, { status, body: bodyText, host: u.host });
       }
       const ra = out ? parseRetryAfter(out.res.headers && out.res.headers.get && out.res.headers.get('retry-after'), now()) : null;
       const backoff = Math.min(maxDelayMs, baseDelayMs * 2 ** attempt) * (0.5 + random() * 0.5);

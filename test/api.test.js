@@ -42,23 +42,23 @@ test('/api/summary', async () => {
   assert.equal(s.adapters.length, 5); assert.equal(s.llm.provider, 'stub');
 });
 test('credentials: set returns no value; list shows presence only; never the value anywhere', async () => {
-  const set = await j('POST', '/api/settings/credentials', { name: 'openai', value: SECRET_VALUE });
+  const set = await j('POST', '/api/settings/credentials', { name: 'nous', value: SECRET_VALUE });
   assert.equal(set.status, 200);
   const all = JSON.stringify([set.body, (await j('GET', '/api/settings')).body, (await j('GET', '/api/summary')).body]);
   assert.ok(!all.includes(SECRET_VALUE) && !all.includes('ZZZZZZZZ'));
-  const cred = (await j('GET', '/api/settings')).body.credentials.find(c => c.name === 'openai');
+  const cred = (await j('GET', '/api/settings')).body.credentials.find(c => c.name === 'nous');
   assert.equal(cred.present, true); assert.equal(cred.source, 'keystore'); assert.equal(cred.tail, '9876');
   assert.equal((await j('POST', '/api/settings/credentials', { name: 'nope', value: 'x' })).status, 400);
 });
 test('credential delete is confirm-gated and token-bound', async () => {
-  const first = await j('DELETE', '/api/settings/credentials/openai', {});
+  const first = await j('DELETE', '/api/settings/credentials/nous', {});
   assert.equal(first.body.needsConfirm, true);
-  assert.equal(d.keystore.get('openai'), SECRET_VALUE, 'nothing deleted yet');
-  const bogus = await j('DELETE', '/api/settings/credentials/openai', { token: 'bogus' });
+  assert.equal(d.keystore.get('nous'), SECRET_VALUE, 'nothing deleted yet');
+  const bogus = await j('DELETE', '/api/settings/credentials/nous', { token: 'bogus' });
   assert.equal(bogus.status, 409);
-  const done = await j('DELETE', '/api/settings/credentials/openai', { token: first.body.token });
+  const done = await j('DELETE', '/api/settings/credentials/nous', { token: first.body.token });
   assert.equal(done.body.deleted, true);
-  assert.equal(d.keystore.get('openai'), '');
+  assert.equal(d.keystore.get('nous'), '');
 });
 test('DRY_RUN disarm over HTTP: gate, phrase, then OFF; ON is immediate', async () => {
   const g = (await j('POST', '/api/settings/dry-run', { dryRun: false })).body;

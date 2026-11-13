@@ -47,8 +47,8 @@ test('all five adapters work as stubs with no credentials', async () => {
   const c = await a.listingcopy.generate({}, 'retro space cats', ['retro', 'space', 'cats']);
   assert.ok(c.title.length <= 140); assert.ok(c.tags.length <= 13); assert.deepEqual(c.tags, normalizeTags(c.tags));
 });
-test('a Printify token selects real READS only (writes stay faked under DRY_RUN); an unimplemented Etsy adapter is never chosen; OpenAI key selects imagegen + listingcopy', () => {
-  const d = makeDeps({ PRINTIFY_API_TOKEN: 'tok-printify-123456789', OPENAI_API_KEY: 'sk-' + 'q'.repeat(40) });
+test('a Printify token selects real READS only (writes stay faked under DRY_RUN); an unimplemented Etsy adapter is never chosen; a Nous key selects imagegen and an OpenAI key selects listing copy', () => {
+  const d = makeDeps({ PRINTIFY_API_TOKEN: 'tok-printify-123456789', OPENAI_API_KEY: 'sk-' + 'q'.repeat(40), NOUS_API_KEY: 'portal-token-123456789' });
   const by = Object.fromEntries(d.adapters.describe().map(x => [x.kind, x]));
   assert.equal(by.pod.realReady, true); assert.equal(by.pod.methods.createProduct, 'stub', 'DRY_RUN fakes the write'); assert.equal(by.pod.methods.listBlueprints, 'real'); assert.equal(by.storefront.realReady, false); assert.equal(by.trend.realReady, false);
   assert.equal(by.imagegen.realReady, true); assert.equal(by.imagegen.methods.generate, 'real'); // spend: real even in DRY_RUN

@@ -22,6 +22,18 @@ button.danger { background: var(--neg); border-color: var(--neg); }
 button.dry { font-weight: 700; letter-spacing: .03em; }
 button.dry.on { background: var(--pos); border-color: var(--pos); } button.dry.off { background: var(--neg); border-color: var(--neg); }
 input { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); flex: 1; min-width: 0; }
+select, input[type="number"] { font: inherit; color: var(--text); background-color: var(--bg); border: 1px solid var(--line); border-radius: 6px; color-scheme: dark; }
+select { appearance: none; padding: 6px 28px 6px 8px; min-width: 0; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='none' stroke='%23e6e9ee' stroke-width='1.5' d='M1 1l5 5 5-5'/></svg>"); background-repeat: no-repeat; background-position: right 8px center; }
+input[type="number"] { color-scheme: dark; }
+@media (prefers-color-scheme: light) {
+  select, input[type="number"] { color-scheme: light; }
+  select { background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='none' stroke='%231c2229' stroke-width='1.5' d='M1 1l5 5 5-5'/></svg>"); }
+}
+option { background: var(--panel); color: var(--text); }
+label.file-btn { display: inline-flex; align-items: center; font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--text); cursor: pointer; }
+label.file-btn.disabled { opacity: .45; pointer-events: none; }
+.design-list { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 4px; }
+.design-list .row { justify-content: space-between; }
 .board { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; padding: 16px; align-items: start; }
 .col { min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px; min-height: 120px; }
 .col h3 { margin: 4px 4px 8px; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; overflow-wrap: break-word; font-size: .72rem; }
@@ -46,6 +58,8 @@ input { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid v
 .card { cursor: pointer; } .card:focus-visible { outline: 2px solid var(--accent); }
 .drawer.wide { width: min(560px, 100%); display: grid; gap: 10px; align-content: start; }
 .modal.wide { width: min(560px, 100%); } .modal label, .drawer label { display: grid; gap: 4px; font-size: .85rem; color: var(--muted); }
+/* The form-label rule above is the same specificity and would turn the upload control into a grey stacked field. */
+.modal label.file-btn, .drawer label.file-btn { display: inline-flex; width: auto; color: var(--text); font-size: inherit; gap: 0; }
 .grow { flex: 1; }
 textarea { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); width: 100%; resize: vertical; }
 .preview { width: 100%; max-height: 50vh; object-fit: contain; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }

@@ -8,11 +8,11 @@ const VALUE = 'sk-test-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA1234';
 
 test('list() and set() never return the value, only presence + fp + tail', () => {
   const { keystore } = makeDeps();
-  const r = keystore.set('openai', VALUE);
+  const r = keystore.set('nous', VALUE);
   assert.deepEqual(Object.keys(r).sort(), ['fp', 'name', 'tail']);
   const listed = JSON.stringify(keystore.list());
   assert.ok(!listed.includes(VALUE) && !listed.includes('AAAAAAAA'));
-  assert.equal(keystore.list().find(k => k.name === 'openai').tail, '1234');
+  assert.equal(keystore.list().find(k => k.name === 'nous').tail, '1234');
 });
 test('the database holds only sealed text', () => {
   const { keystore, db } = makeDeps();
@@ -23,30 +23,30 @@ test('the database holds only sealed text', () => {
 });
 test('get() returns the value server-side; remove() deletes it', () => {
   const { keystore } = makeDeps();
-  keystore.set('openai', VALUE);
-  assert.equal(keystore.get('openai'), VALUE);
-  assert.equal(keystore.remove('openai'), true);
-  assert.equal(keystore.get('openai'), '');
+  keystore.set('nous', VALUE);
+  assert.equal(keystore.get('nous'), VALUE);
+  assert.equal(keystore.remove('nous'), true);
+  assert.equal(keystore.get('nous'), '');
 });
 test('a tampered row is treated as absent, never returned', () => {
   const { keystore, db } = makeDeps();
-  keystore.set('openai', VALUE);
+  keystore.set('nous', VALUE);
   const r = db.prepare('SELECT sealed FROM keys').get();
   const parts = r.sealed.split('.'); parts[3] = (parts[3][0] === 'A' ? 'B' : 'A') + parts[3].slice(1);
   db.prepare('UPDATE keys SET sealed = ?').run(parts.join('.'));
-  assert.equal(keystore.get('openai'), '');
+  assert.equal(keystore.get('nous'), '');
   assert.deepEqual(keystore.allSecrets(), []);
 });
 test('a rotated secret cannot open old rows', () => {
   const { keystore, db } = makeDeps();
-  keystore.set('openai', VALUE);
-  assert.equal(makeKeystore(db, 'a-completely-different-secret').get('openai'), '');
-  assert.equal(makeKeystore(db, SECRET).get('openai'), VALUE);
+  keystore.set('nous', VALUE);
+  assert.equal(makeKeystore(db, 'a-completely-different-secret').get('nous'), '');
+  assert.equal(makeKeystore(db, SECRET).get('nous'), VALUE);
 });
 test('unknown names and empty values are refused', () => {
   const { keystore } = makeDeps();
   assert.throws(() => keystore.set('bitcoin', 'x'), /Cannot hold/);
-  assert.throws(() => keystore.set('openai', '   '), /Empty/);
+  assert.throws(() => keystore.set('nous', '   '), /Empty/);
 });
 test('store OAuth tokens are sealed and fed to the redactor', () => {
   const { keystore, db, redactor, credentials } = makeDeps();

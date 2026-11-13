@@ -95,9 +95,9 @@ function loadConfig(env = process.env) {
       priceOutPerM: env.LLM_PRICE_OUT_PER_M === undefined || env.LLM_PRICE_OUT_PER_M === '' ? null : Number(env.LLM_PRICE_OUT_PER_M),
     },
     image: {
-      provider: (env.IMAGE_PROVIDER || 'openai').trim().toLowerCase(), // openai | gemini | xai | openrouter; the Settings panel overrides it
+      provider: (env.IMAGE_PROVIDER || 'nous').trim().toLowerCase(), // nous | gemini | xai | openrouter; the Settings panel overrides it
       maxCents: Number(env.IMAGE_MAX_CENTS) > 0 ? Number(env.IMAGE_MAX_CENTS) : null, // OpenRouter per-image cap-check ceiling
-      model: (env.IMAGE_MODEL || 'gpt-image-1').trim(),
+      model: (env.IMAGE_MODEL || '').trim(), // empty so the provider's own default wins (Nous: Klein). A leftover gpt-image-1 is not a Nous model.
       quality: (env.IMAGE_QUALITY || 'high').trim().toLowerCase(),
       upscale: !OFF.has(String(env.IMAGE_UPSCALE === undefined ? 'true' : env.IMAGE_UPSCALE).trim().toLowerCase()),
     },
