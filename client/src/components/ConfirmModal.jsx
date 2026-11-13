@@ -16,11 +16,13 @@ export default function ConfirmModal({ title, summary, phrase, danger, run, onCl
   return (
     <div className="modal-back" role="dialog" aria-modal="true" aria-label={title}>
       <div className="modal">
-        <h3>{title}</h3>
-        <p>{summary}</p>
-        {phrase && <input autoFocus value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={phrase} aria-label="Confirmation phrase" />}
-        {err && <div className="banner error">{err}</div>}
-        <div className="row">
+        <div className="modal-body">
+          <h3>{title}</h3>
+          <p>{summary}</p>
+          {phrase && <input autoFocus value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={phrase} aria-label="Confirmation phrase" />}
+          {err && <div className="banner error">{err}</div>}
+        </div>
+        <div className="modal-actions row">
           <button className="ghost" onClick={onClose}>Cancel</button>
           <button className={danger ? 'danger' : ''} disabled={!ok || busy} onClick={go}>Confirm</button>
         </div>

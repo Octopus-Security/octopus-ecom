@@ -52,8 +52,11 @@ label.file-btn.disabled { opacity: .45; pointer-events: none; }
 .nous-signin { display: grid; gap: 6px; }
 .nous-signin a { color: var(--accent); min-height: 44px; display: inline-flex; align-items: center; }
 .nous-signin .banner.error { margin: 0; }
-.modal-back { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: grid; place-items: center; z-index: 20; padding: 16px; }
-.modal { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; width: min(480px, 100%); display: grid; gap: 12px; }
+.modal-back { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: grid; place-items: safe center; z-index: 20; padding: 16px; overflow: auto; overscroll-behavior: contain; }
+.modal { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; width: min(480px, 100%); display: grid; gap: 12px; max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow-y: auto; overscroll-behavior: contain; }
+.modal:has(> .modal-body) { grid-template-rows: minmax(0, 1fr) auto; gap: 0; padding: 0; overflow: hidden; }
+.modal-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px; display: grid; gap: 12px; align-content: start; }
+.modal-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; align-items: center; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--panel); }
 .modal .row { justify-content: flex-end; }
 @media (max-width: 640px) { .board { gap: 8px; } .topbar { gap: 8px 14px; } }
 @media (max-width: 340px) { .board { grid-template-columns: minmax(0, 1fr); } }

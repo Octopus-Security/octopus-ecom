@@ -68,6 +68,7 @@ export default function Composer({ onClose, onChanged, onOpen }) {
   return (
     <div className="modal-back" role="dialog" aria-modal="true" aria-label="New product">
       <form className="modal wide" onSubmit={go}>
+        <div className="modal-body">
         <h3>New product</h3>
         <label>Niche / theme<input value={f.niche} onChange={set('niche')} maxLength={200} placeholder="cozy woodland animals" disabled={locked} /></label>
         <label>Design brief
@@ -108,7 +109,8 @@ export default function Composer({ onClose, onChanged, onOpen }) {
         <div className="muted small">{ownFile ? 'This PNG is saved as the print file. Nothing is spent on an image. The print-provider step reuses it.' : 'Or upload a PNG you already have. JPEG is refused: export a PNG. Generate is the only image spend.'}</div>
         {busy && <div className="muted" role="status">{(ownFile && step === 1 ? 'Saving your PNG' : STEPS[step])}...{ownFile ? '' : ' (image generation can take a minute)'}</div>}
         {err && <div className="banner error" role="alert">{err}{newId !== null ? ' The product is on the board; "Retry" resumes from here.' : ''}</div>}
-        <div className="row">
+        </div>
+        <div className="modal-actions row">
           <button type="button" className="ghost" onClick={onClose} disabled={busy}>Close</button>
           <button type="submit" disabled={busy || !ready}>{newId !== null ? 'Retry' : (ownFile ? 'Use this PNG' : 'Generate')}</button>
         </div>

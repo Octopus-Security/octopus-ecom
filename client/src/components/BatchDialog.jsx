@@ -24,6 +24,7 @@ export default function BatchDialog({ onClose, onStarted }) {
   return (
     <div className="modal-back" role="dialog" aria-modal="true" aria-label="Run batch">
       <form className="modal wide" onSubmit={go}>
+        <div className="modal-body">
         <h3>Run batch</h3>
         <div className="muted small">Proposes N distinct original design concepts from your niche, then takes each through design, print-readiness, print-provider product, copy and margin, and stops at PENDING_APPROVAL. Nothing is published. Generation spend counts against the daily cap; if it is reached the batch pauses.</div>
         <label>Niche / theme<input value={f.niche} onChange={set('niche')} maxLength={200} required placeholder="cozy woodland animals" /></label>
@@ -39,7 +40,8 @@ export default function BatchDialog({ onClose, onStarted }) {
           <label className="grow">Shipping charged (USD)<input type="number" min="0" step="0.01" value={f.shipping} onChange={set('shipping')} /></label>
         </div>
         {err && <div className="banner error" role="alert">{err}</div>}
-        <div className="row"><button type="button" className="ghost" onClick={onClose} disabled={busy}>Close</button><button type="submit" disabled={busy || !ready}>{busy ? 'Starting...' : 'Run batch'}</button></div>
+        </div>
+        <div className="modal-actions row"><button type="button" className="ghost" onClick={onClose} disabled={busy}>Close</button><button type="submit" disabled={busy || !ready}>{busy ? 'Starting...' : 'Run batch'}</button></div>
       </form>
     </div>
   );
