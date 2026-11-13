@@ -15,7 +15,7 @@ body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 syst
 .cap { min-width: 160px; }
 .meter { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin-top: 4px; }
 .meter div { height: 100%; background: var(--accent); } .meter.full div { background: var(--neg); }
-button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+button { font: inherit; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; min-height: 44px; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; flex: 0 0 auto; }
 button:disabled { opacity: .45; cursor: not-allowed; }
 button.ghost { background: transparent; color: var(--text); border-color: var(--line); }
 button.danger { background: var(--neg); border-color: var(--neg); }
@@ -30,7 +30,7 @@ input[type="number"] { color-scheme: dark; }
   select { background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='none' stroke='%231c2229' stroke-width='1.5' d='M1 1l5 5 5-5'/></svg>"); }
 }
 option { background: var(--panel); color: var(--text); }
-label.file-btn { display: inline-flex; align-items: center; font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--text); cursor: pointer; }
+label.file-btn { display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; min-height: 44px; font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--text); cursor: pointer; flex: 0 0 auto; }
 label.file-btn.disabled { opacity: .45; pointer-events: none; }
 .design-list { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 4px; }
 .design-list .row { justify-content: space-between; }
@@ -46,7 +46,7 @@ label.file-btn.disabled { opacity: .45; pointer-events: none; }
 .flag { display: inline-block; margin: 4px 4px 0 0; padding: 0 6px; border-radius: 4px; background: var(--warn); color: #000; font-size: .72rem; }
 .muted { color: var(--muted); } .small { font-size: .78rem; } .pos { color: var(--pos); } .neg { color: var(--neg); }
 .banner.error { background: color-mix(in srgb, var(--neg) 18%, transparent); border: 1px solid var(--neg); padding: 8px 12px; margin: 8px 16px; border-radius: 6px; }
-.row { display: flex; gap: 8px; align-items: center; } .row.between { justify-content: space-between; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; } .row.between { justify-content: space-between; }
 .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 100%); background: var(--panel); border-left: 1px solid var(--line); padding: 16px; overflow-y: auto; z-index: 10; }
 .cred { border-top: 1px solid var(--line); padding: 10px 0; display: grid; gap: 6px; }
 .modal-back { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: grid; place-items: center; z-index: 20; padding: 16px; }
