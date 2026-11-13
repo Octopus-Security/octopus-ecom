@@ -7,6 +7,7 @@ const { STAGES, S, parseFlags, approvalSummary } = require('../domain/stages');
 const { productEvent } = require('../events');
 const { ConfirmError } = require('../confirm');
 const { KEY_NAMES } = require('../keystore');
+const { pasteError, makeNousLogin } = require('../nous-portal');
 const feeSchedule = require('../domain/fee-schedule');
 const fees = require('../domain/fees');
 
@@ -20,7 +21,8 @@ function sniffImage(b) {
 function actorOf() { return 'human'; } // every request here is an authenticated owner
 
 function router(deps) {
-  const { db, credentials, keystore, settings, confirm, dryRun, spend, adapters, llm, cfg } = deps;
+  const { db, credentials, keystore, settings, confirm, dryRun, spend, adapters, llm, cfg, http } = deps;
+  const nousLogin = makeNousLogin({ http, keystore });
   const imagegenSel = require('../adapters/imagegen');
   const { PROVIDERS, PROVIDER_IDS } = require('../adapters/imagegen/providers');
   const imagePayload = () => ({
@@ -264,10 +266,20 @@ function router(deps) {
   r.post('/settings/credentials', wrap(async (req, res) => {
     const { name, value } = req.body || {};
     if (!KEY_NAMES.includes(name)) return res.status(400).json({ error: `name must be one of ${KEY_NAMES.join(', ')}` });
-    if (typeof value !== 'string' || !value.trim() || value.length > 4096) return res.status(400).json({ error: 'value must be a non-empty string (<=4096 chars)' });
+    const max = name === 'nous' ? 12000 : 4096;
+    if (typeof value !== 'string' || !value.trim() || value.length > max) return res.status(400).json({ error: `value must be a non-empty string (<=${max} chars)` });
+    if (name === 'nous') {
+      const why = pasteError(value);
+      if (why) return res.status(400).json({ error: why });
+    }
     const { fp, tail } = keystore.set(name, value);
     res.json({ ok: true, name, present: true, fp, tail, source: 'keystore' });
   }));
+
+  // Nous Portal device-code sign-in. The device code stays on the server.
+  // The response never includes an access token or a refresh token.
+  r.post('/nous/login', wrap(async (_req, res) => { res.json(await nousLogin.start()); }));
+  r.post('/nous/login/poll', wrap(async (_req, res) => { res.json(await nousLogin.poll()); }));
 
   // DELETE /api/settings/credentials/:name — confirm-gated (irreversible).
   r.delete('/settings/credentials/:name', wrap(async (req, res) => {

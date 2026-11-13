@@ -36,8 +36,8 @@ Etsy's fees from a versioned schedule (Settings, Fees) and Printify's base cost 
    *Verify:* Printify shows the Etsy shop as connected.
 4. **OWNER: create keys and enter them in the panel** (ecom, top bar, Settings, Credentials; sealed, never shown again):
    `printify` (API token from Printify account settings), `etsy_api_key`, `etsy_shared_secret`, and one image key for real designs (without one
-   designs are placeholders): `nous` (the Nous Portal subscription token), `gemini` (Google AI Studio key), `xai` (xAI API key) or `openrouter`.
-   The Portal token is not always the chat inference key. Paste it as `nous`. Then in Settings, **Image generation**, pick that provider and model.
+   designs are placeholders): `nous` (Sign in to Nous Portal on that row; the chat inference key is refused), `gemini` (Google AI Studio key), `xai` (xAI API key) or `openrouter`.
+   Sign in once. The shop stores its own Portal login and refreshes it. Do not paste the chat key, and do not paste a Hermes refresh token. Then in Settings, **Image generation**, pick that provider and model.
    The default is Nous Klein (`fal-ai/flux-2/klein/9b`). A provider with no key refuses to generate; it never switches to another. A solid colour
    block means the free placeholder ran because no nous key was set. Env fallbacks on the stack: `NOUS_API_KEY`, `GEMINI_API_KEY`, `XAI_API_KEY`,
    `OPENROUTER_API_KEY`. `OPENAI_API_KEY` is only the listing-copy fallback when cortex is absent. It is not an image key and has no Credentials row.

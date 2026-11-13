@@ -122,7 +122,7 @@ another paid provider (only the default, nous with no key, still uses the free s
 
 | Provider (key / env) | Endpoint | Models | Docs |
 |---|---|---|---|
-| `nous` / `NOUS_API_KEY` | `POST https://fal-queue-gateway.nousresearch.com/{model}` | `fal-ai/flux-2/klein/9b` (default), `fal-ai/flux-2-pro`, `fal-ai/qwen-image`, `fal-ai/ideogram/v3` | Hermes tool gateway, read 2026-11-13. Auth is `Authorization: Key <portal token>`, not Bearer. |
+| `nous` / `NOUS_API_KEY` | `POST https://fal-queue-gateway.nousresearch.com/{model}` | `fal-ai/flux-2/klein/9b` (default), `fal-ai/flux-2-pro`, `fal-ai/qwen-image`, `fal-ai/ideogram/v3` | Hermes tool gateway, read 2026-11-13. Auth is `Authorization: Key <Portal access token>`, not Bearer and not the chat inference key. |
 | `gemini` / `GEMINI_API_KEY` | `POST generativelanguage.googleapis.com/v1beta/interactions` | `gemini-3.1-flash-image` (default), `gemini-nano-banana-2.1`, `gemini-3.1-flash-lite-image`, `gemini-3-pro-image`, `gemini-2.5-flash-image` (deprecated) | https://aistudio.google.com/docs/image-generation , prices https://aistudio.google.com/docs/pricing (read 2026-11-11) |
 | `xai` / `XAI_API_KEY` | `POST api.x.ai/v1/images/generations` | `grok-imagine-image-2.0` (default), `grok-imagine-image` | https://docs.x.ai/developers/model-capabilities/images/generation , https://docs.x.ai/developers/pricing (read 2026-11-11) |
 | `openrouter` / `OPENROUTER_API_KEY` | `POST openrouter.ai/api/v1/images` | any image model id, chosen in Settings (no default) | https://openrouter.ai/docs/features/multimodal/image-generation (read 2026-11-11) |
@@ -144,8 +144,8 @@ returns no price. The app records a ceiling before any HTTP call (Klein 1 cent p
 buys that one image when Generate is clicked and a key is set. Upload spends nothing and does not call the gateway. Creating the print-provider
 product, repricing, and publishing upload the latest saved file (a dry-run PNG, a generated one, or an upload) and do not generate another image.
 Mockups and the base-cost dollar stay estimates until live writes create a real Printify product. A small PNG can fail print coverage; the file
-is kept. The coverage rule is not loosened. The chat inference key is not proven to be the Portal token this gateway wants (`Authorization: Key`).
-The 2026-11-11 note that Nous had no image generation is superseded by the Hermes tool-gateway docs read 2026-11-13. No generation was spent to check the token.
+is kept. The coverage rule is not loosened. The chat inference key is refused by this gateway (HTTP 401, observed 2026-11-13; no second generation was spent). Settings, Credentials, Sign in to Nous Portal runs the public device-code login (`client_id=hermes-cli`) and stores this shop's own refresh token. A refresh is single-use and is written back before the image call. Hermes's own login is not read. A pasted value is accepted only when it is an unexpired access JWT.
+The 2026-11-11 note that Nous had no image generation is superseded by the Hermes tool-gateway docs read 2026-11-13.
 
 ### M1: image generation, copy, pipeline
 

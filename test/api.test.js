@@ -2,10 +2,10 @@
 // Real HTTP against buildApp on an ephemeral port: auth gates, settings never leak, confirm gates.
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { makeDeps } = require('./helpers');
+const { makeDeps, portalJwt } = require('./helpers');
 const { buildApp } = require('../server/app');
 
-const SECRET_VALUE = 'sk-test-ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ9876';
+const SECRET_VALUE = portalJwt({ tail: '9876' });
 let server; let base; let d;
 
 before(async () => {
@@ -45,7 +45,11 @@ test('credentials: set returns no value; list shows presence only; never the val
   const set = await j('POST', '/api/settings/credentials', { name: 'nous', value: SECRET_VALUE });
   assert.equal(set.status, 200);
   const all = JSON.stringify([set.body, (await j('GET', '/api/settings')).body, (await j('GET', '/api/summary')).body]);
-  assert.ok(!all.includes(SECRET_VALUE) && !all.includes('ZZZZZZZZ'));
+  assert.ok(!all.includes(SECRET_VALUE));
+  const chat = await j('POST', '/api/settings/credentials', { name: 'nous', value: 'sk-chat-' + 'a'.repeat(24) });
+  assert.equal(chat.status, 400);
+  assert.match(chat.body.error, /Sign in to Nous Portal/);
+  assert.equal(d.keystore.get('nous'), SECRET_VALUE, 'a chat key must not replace the stored token');
   const cred = (await j('GET', '/api/settings')).body.credentials.find(c => c.name === 'nous');
   assert.equal(cred.present, true); assert.equal(cred.source, 'keystore'); assert.equal(cred.tail, '9876');
   assert.equal((await j('POST', '/api/settings/credentials', { name: 'nope', value: 'x' })).status, 400);

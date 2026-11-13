@@ -36,7 +36,7 @@ export default function ImageProviderPanel({ settings, onSaved }) {
           <select value={res} onChange={(e) => setRes(e.target.value)}><option value="">default</option>{p.resolutions.map((r) => <option key={r} value={r}>{r}</option>)}</select>
         </label>
       )}
-      {provider === 'nous' && <div className="muted small">Uses the Nous Portal subscription. Paste the Portal token under Credentials as nous. The chat inference key is not always that token. Dry run still makes a real image and only fakes the print provider and the shops. A solid colour block means no nous key was set, so the free placeholder ran. A saved PNG, including one you upload, is what the print provider uses later. Regenerate is the only new image spend.</div>}
+      {provider === 'nous' && <div className="muted small">Uses the Nous Portal subscription. The chat inference key is refused by the image gateway. Under Credentials, use Sign in to Nous Portal. Dry run still makes a real image and only fakes the print provider and the shops. A solid colour block means no Nous sign-in was stored, so the free placeholder ran. A saved PNG, including one you upload, is what the print provider uses later. Regenerate is the only new image spend.</div>}
       {provider === 'openrouter' && <label>Per-image spend ceiling in cents (used for the daily-cap check; default 25)<input type="number" min="1" value={maxCents} onChange={(e) => setMaxCents(e.target.value)} /></label>}
       <div className="row"><button onClick={save}>Save image provider</button>{msg && <span className="small pos">{msg}</span>}</div>
     </div>

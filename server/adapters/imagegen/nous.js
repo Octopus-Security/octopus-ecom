@@ -15,16 +15,19 @@
  *   flux-2-pro also has guidance_scale and safety_tolerance. qwen-image has steps,
  *   guidance, acceleration, and output_format. ideogram v3 does not take output_format.
  *
- * ASSUMED (no generation was spent to check): the Portal token is what the gateway
- * accepts in the Key scheme — the chat key for inference-api.nousresearch.com is not
- * proven to be that token. The Nous proxy accepts custom {width,height}, which the
- * FAL model page documents for direct FAL. Status strings match the FAL queue.
+ * The Key is a Portal OAuth access token, not the chat inference key. A chat key
+ * was refused live on 2026-11-13 (HTTP 401). No second generation was spent.
+ * server/nous-portal.js reads a stored sign-in, or a pasted unexpired access JWT,
+ * and refreshes the shop's own single-use refresh token before this call.
+ * The Nous proxy accepts custom {width,height}, which the FAL model page documents
+ * for direct FAL. Status strings match the FAL queue.
  *
  * Ceilings err high and are checked BEFORE any HTTP call. The gateway returns no price.
  * A saved PNG is reused later by the print-provider step; this module runs only when
  * someone asks for a new image.
  */
 const { saveImage, checkCount } = require('./shared');
+const { gatewayAccessToken } = require('../../nous-portal');
 
 const GATEWAY_ORIGIN = 'https://fal-queue-gateway.nousresearch.com';
 const GATEWAY_HOST = 'fal-queue-gateway.nousresearch.com';
@@ -91,7 +94,7 @@ function gatewayError(err) {
   const status = err && err.status;
   const text = `${err && err.body ? err.body : ''} ${err && err.message ? err.message : ''}`;
   if (status === 401 || status === 403) {
-    return new Error(`Nous image gateway refused the key (HTTP ${status}). It wants the Portal subscription token (the one from Hermes setup --portal), which is not always the chat inference key. Paste that token in Settings, Credentials, as nous.`);
+    return new Error(`Nous image gateway refused the Portal sign-in (HTTP ${status}). Sign in again under Settings, Credentials. The chat inference key cannot be used here.`);
   }
   if (status === 409 || /billing_error|unsupported_pricing_meter/i.test(text)) {
     return new Error('Nous image gateway rejected this model. Pick fal-ai/flux-2/klein/9b.');
@@ -130,8 +133,12 @@ function createNousImages({
       const each = centsFor(model, size.width, size.height);
       const estimate = each * count;
       if (spend) spend.assertCanSpend(estimate);
-      const key = credentials.get('nous');
-      if (!key) throw new Error('Image provider "nous" is selected but no Nous key is set (Settings, Credentials, nous, or NOUS_API_KEY).');
+      const key = await gatewayAccessToken({
+        read: () => credentials.get('nous'),
+        http,
+        save: credentials.set ? (value) => credentials.set('nous', value) : null,
+        forget: credentials.remove ? () => credentials.remove('nous') : null,
+      });
       const headers = { Authorization: `Key ${key}` };
       const images = [];
       for (let n = 0; n < count; n++) {

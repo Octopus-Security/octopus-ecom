@@ -53,6 +53,13 @@ function fakeFetch(responder) {
 }
 const fakeHttp = f => makeHttp({ fetchImpl: f, sleep: async () => {}, random: () => 0.5 });
 
+/** An unexpired unsigned JWT the Nous adapter will send as Authorization: Key. Not a real Portal token. */
+function portalJwt({ exp = 4_000_000_000, tail = 'sig' } = {}) {
+  const b64 = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+  return `${b64({ alg: 'none', typ: 'JWT' })}.${b64({ exp, scope: 'inference:invoke' })}.${tail}`;
+}
+
 module.exports.gradientPng = gradientPng;
 module.exports.fakeFetch = fakeFetch;
 module.exports.fakeHttp = fakeHttp;
+module.exports.portalJwt = portalJwt;

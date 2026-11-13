@@ -27,6 +27,10 @@ function makeCredentials({ keystore, env = process.env, secret }) {
     /** SERVER-INTERNAL: the value, or ''. Keystore first, then env. */
     get(name) { return keystore.get(name) || fromEnv(name); },
     has(name) { return Boolean(this.get(name)); },
+    /** SERVER-INTERNAL. Writes the sealed store. Used when a Nous refresh rotates. */
+    set(name, value) { return keystore.set(name, value); },
+    /** SERVER-INTERNAL. Drops a sealed value. An env fallback, if set, remains. */
+    remove(name) { return keystore.remove(name); },
     /** Safe to return over HTTP. */
     status() {
       const sealed = Object.fromEntries(keystore.list().map(r => [r.name, r]));

@@ -39,7 +39,17 @@ function makeKeystore(db, secret) {
     /** SERVER-INTERNAL. Every decrypted value, for the redactor only. */
     allSecrets() {
       const out = [];
-      for (const r of db.prepare('SELECT sealed FROM keys').all()) { try { out.push(open(r.sealed, secret)); } catch { /* nothing to redact */ } }
+      const push = (value) => {
+        if (typeof value !== 'string' || !value) return;
+        out.push(value);
+        if (!value.startsWith('{')) return;
+        try {
+          const o = JSON.parse(value);
+          if (!o || typeof o !== 'object' || Array.isArray(o)) return;
+          for (const v of Object.values(o)) if (typeof v === 'string' && v !== value) out.push(v);
+        } catch { /* the raw string is already queued */ }
+      };
+      for (const r of db.prepare('SELECT sealed FROM keys').all()) { try { push(open(r.sealed, secret)); } catch { /* nothing to redact */ } }
       for (const r of db.prepare('SELECT oauth_sealed FROM stores WHERE oauth_sealed IS NOT NULL').all()) {
         try { const o = JSON.parse(open(r.oauth_sealed, secret)); for (const v of Object.values(o)) if (typeof v === 'string') out.push(v); } catch { /* skip */ }
       }

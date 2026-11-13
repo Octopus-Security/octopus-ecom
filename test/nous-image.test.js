@@ -4,12 +4,13 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { makeDeps, tmpDir, gradientPng, fakeFetch, fakeHttp, quiet } = require('./helpers');
+const { makeDeps, tmpDir, gradientPng, fakeFetch, fakeHttp, quiet, portalJwt } = require('./helpers');
 const { createNousImages, printSize, DEFAULT_MODEL } = require('../server/adapters/imagegen/nous');
 const { SpendCapError } = require('../server/spend');
 const { readPngSize } = require('../server/png');
 
 const png = () => gradientPng(8, 12);
+const TOKEN = portalJwt();
 const creds = (key) => ({ get: (name) => (name === 'nous' ? key : ''), has: (name) => name === 'nous' && Boolean(key) });
 
 function responder(bytes, opt = {}) {
@@ -36,7 +37,7 @@ function adapter(bytes, opt = {}) {
   const f = fakeFetch(opt.fetch || responder(bytes, opt));
   const dataDir = opt.dataDir || tmpDir();
   const a = createNousImages({
-    http: fakeHttp(f), credentials: creds(opt.key === undefined ? 'portal-token-123' : opt.key),
+    http: fakeHttp(f), credentials: creds(opt.key === undefined ? TOKEN : opt.key),
     dataDir, upscale: null, log: quiet, spend: opt.spend, model: opt.model || DEFAULT_MODEL,
     sleep: async () => {}, maxPolls: opt.maxPolls || 40,
   });
@@ -55,7 +56,7 @@ test('Klein asks for the snapped size, Key auth, and a fal.media PNG with no key
   const out = await a.generate('a frog writing code', { width: 3951, height: 4477 });
   const post = f.calls.find((c) => c.method === 'POST');
   assert.equal(post.url, 'https://fal-queue-gateway.nousresearch.com/fal-ai/flux-2/klein/9b');
-  assert.equal(post.headers.Authorization, 'Key portal-token-123');
+  assert.equal(post.headers.Authorization, `Key ${TOKEN}`);
   assert.equal(post.headers['Idempotency-Key'], undefined);
   assert.deepEqual(post.body, {
     prompt: 'a frog writing code', image_size: { width: 896, height: 1024 },
@@ -66,7 +67,7 @@ test('Klein asks for the snapped size, Key auth, and a fal.media PNG with no key
   const cdn = f.calls.filter((c) => String(c.url).includes('fal.media'));
   assert.equal(cdn.length, 1);
   assert.equal(cdn[0].headers.Authorization, undefined);
-  for (const c of f.calls) if (String(c.url).includes('fal-queue-gateway.nousresearch.com')) assert.equal(c.headers.Authorization, 'Key portal-token-123');
+  for (const c of f.calls) if (String(c.url).includes('fal-queue-gateway.nousresearch.com')) assert.equal(c.headers.Authorization, `Key ${TOKEN}`);
   const file = fs.readFileSync(path.join(dataDir, 'images', out.images[0].file));
   assert.equal(file.subarray(0, 4).toString('hex'), '89504e47');
   assert.deepEqual(readPngSize(file), { width: 8, height: 12 });
@@ -96,7 +97,7 @@ test('a CDN redirect is refused', async () => {
 
 test('missing key and a zero cap make no request; 401 names the Portal token; 409 names Klein', async () => {
   const keyless = adapter(png(), { key: '' });
-  await assert.rejects(keyless.a.generate('x', { width: 64, height: 64 }), /no Nous key is set/);
+  await assert.rejects(keyless.a.generate('x', { width: 64, height: 64 }), /Sign in to Nous Portal/);
   assert.equal(keyless.f.calls.length, 0);
   const capped = adapter(png(), { spend: makeDeps({ DAILY_SPEND_CAP: '0' }).spend });
   await assert.rejects(capped.a.generate('x', { width: 3951, height: 4477 }), SpendCapError);
@@ -105,16 +106,22 @@ test('missing key and a zero cap make no request; 401 names the Portal token; 40
   await assert.rejects(unknown.a.generate('x', { width: 64, height: 64 }), /refusing to spend blindly/);
   assert.equal(unknown.f.calls.length, 0);
   const denied = adapter(png(), { submitStatus: 401 });
-  await assert.rejects(denied.a.generate('x', { width: 64, height: 64 }), /Portal subscription token/);
+  await assert.rejects(denied.a.generate('x', { width: 64, height: 64 }), /chat inference key cannot be used/);
   assert.equal(denied.f.calls.length, 1);
   const billing = adapter(png(), { submitStatus: 409, submitBody: 'BILLING_ERROR unsupported_pricing_meter' });
   await assert.rejects(billing.a.generate('x', { width: 64, height: 64 }), /fal-ai\/flux-2\/klein\/9b/);
   assert.equal(billing.f.calls.length, 1);
 });
 
+test('a chat inference key never calls the gateway', async () => {
+  const { f, a } = adapter(png(), { key: 'sk-nous-chat-key-1234' });
+  await assert.rejects(a.generate('x', { width: 64, height: 64 }), /chat inference key/);
+  assert.equal(f.calls.length, 0);
+});
+
 test('polling stops when the gateway never finishes', async () => {
   const f = fakeFetch((url) => (String(url).includes('/status') ? { body: { status: 'IN_QUEUE' } } : { body: { request_id: 'abc' } }));
-  const a = createNousImages({ http: fakeHttp(f), credentials: creds('k'), dataDir: tmpDir(), upscale: null, log: quiet, sleep: async () => {}, maxPolls: 2 });
+  const a = createNousImages({ http: fakeHttp(f), credentials: creds(TOKEN), dataDir: tmpDir(), upscale: null, log: quiet, sleep: async () => {}, maxPolls: 2 });
   await assert.rejects(a.generate('x', { width: 64, height: 64 }), /did not finish/);
   assert.equal(f.calls.filter((c) => String(c.url).endsWith('/status')).length, 2);
 });
@@ -134,18 +141,18 @@ test('pro, qwen and ideogram send their own bodies and never num_images', async 
     assert.equal(post.body.output_format, hasFormat ? 'png' : undefined);
     for (const [k, v] of Object.entries(extra)) assert.equal(post.body[k], v, model);
   }
-  const ideo = createNousImages({ model: 'fal-ai/ideogram/v3', credentials: creds('k'), http: fakeHttp(fakeFetch(() => ({ body: {} }))), dataDir: tmpDir(), upscale: null, log: quiet });
+  const ideo = createNousImages({ model: 'fal-ai/ideogram/v3', credentials: creds(TOKEN), http: fakeHttp(fakeFetch(() => ({ body: {} }))), dataDir: tmpDir(), upscale: null, log: quiet });
   assert.equal(ideo.estimate({ width: 100, height: 100, count: 2 }).costCents, 18);
 });
 
 test('DRY_RUN with a nous key still calls the gateway and saves that PNG', async () => {
   const f = fakeFetch(responder(png()));
-  const d = makeDeps({ NOUS_API_KEY: 'portal-token-123456789', IMAGE_UPSCALE: 'off' }, { http: fakeHttp(f), upscale: null });
+  const d = makeDeps({ NOUS_API_KEY: TOKEN, IMAGE_UPSCALE: 'off' }, { http: fakeHttp(f), upscale: null });
   assert.equal(d.dryRun.isOn(), true);
   assert.equal(d.adapters.imagegen.describe().methods.generate, 'real');
   const out = await d.adapters.imagegen.generate('a frog', { width: 3951, height: 4477 });
   assert.equal(out.model, DEFAULT_MODEL);
-  assert.equal(f.calls[0].headers.Authorization, 'Key portal-token-123456789');
+  assert.equal(f.calls[0].headers.Authorization, `Key ${TOKEN}`);
   assert.equal(f.calls[0].body.image_size.width, 896);
   const file = fs.readFileSync(path.join(d.dataDir, 'images', out.images[0].file));
   assert.equal(file.subarray(0, 4).toString('hex'), '89504e47');
@@ -154,7 +161,7 @@ test('DRY_RUN with a nous key still calls the gateway and saves that PNG', async
 
 test('a small nous PNG is kept when print coverage fails, and create-pod does not generate again', async () => {
   const f = fakeFetch(responder(gradientPng(64, 80)));
-  const d = makeDeps({ NOUS_API_KEY: 'portal-token-123456789', IMAGE_UPSCALE: 'off' }, { http: fakeHttp(f), upscale: null });
+  const d = makeDeps({ NOUS_API_KEY: TOKEN, IMAGE_UPSCALE: 'off' }, { http: fakeHttp(f), upscale: null });
   const p = d.pipeline.create({ brief: 'a frog writing code', listPrice: 20 });
   await d.pipeline.selectPod(p.id, { blueprint: 'stub-tee', providerId: 'stub-pp', variantIds: ['stub-tee-v1'] });
   await d.pipeline.generateDesign(p.id);

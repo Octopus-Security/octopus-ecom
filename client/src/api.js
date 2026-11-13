@@ -52,6 +52,8 @@ export const api = {
   settings: () => call('GET', '/api/settings'),
   saveSettings: (b) => call('POST', '/api/settings', b),
   setCredential: (name, value) => call('POST', '/api/settings/credentials', { name, value }),
+  nousLogin: () => call('POST', '/api/nous/login', {}),
+  nousLoginPoll: () => call('POST', '/api/nous/login/poll', {}),
   deleteCredential: (name, token) => call('DELETE', `/api/settings/credentials/${encodeURIComponent(name)}`, token ? { token } : {}),
   setDryRun: (b) => call('POST', '/api/settings/dry-run', b),
   // M3: Etsy
