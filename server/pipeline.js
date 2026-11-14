@@ -36,7 +36,9 @@ const printReadiness = require('./domain/print-readiness');
 const { enforceCopy } = require('./domain/etsy-rules');
 const { designPrompt, manualPrompt } = require('./domain/prompts');
 const { fitToArea } = require('./upscale');
-const { readPngSize } = require('./png');
+const { readPngSize, decodePng } = require('./png');
+const { compositeKeep, inspectMask, inspectPicture } = require('./studio');
+const { resolveBlueprint, typeOf } = require('./proposals/catalog');
 const { productEvent, systemEvent } = require('./events');
 const { tx } = require('./db');
 const { projectMargin, marginFlags, snapshot } = require('./domain/fees');
@@ -143,6 +145,17 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
       setFlag(id, 'print_review', r.ok && r.review ? String(r.review).slice(0, 400) : null);
     } catch (e) { log.warn(`[pipeline] print-readiness check failed for product ${id}: ${e.message}`); }
   }
+  /** Flag a blank or flat latest file. A 1-bit dry-run block cannot be judged and clears the flag. Never refuses the save. */
+  function earlyPictureFlag(id) {
+    try {
+      const row = db.prepare('SELECT image_path FROM designs WHERE product_id = ? ORDER BY id DESC LIMIT 1').get(id);
+      if (!row) return;
+      const found = inspectPicture(readDesignPng(row));
+      const hit = (code) => (found.issues.find((i) => i.code === code) || {}).detail || null;
+      setFlag(id, 'picture_blank', found.skipped ? null : hit('picture_blank'));
+      setFlag(id, 'picture_flat', found.skipped ? null : hit('picture_flat'));
+    } catch (e) { log.warn(`[pipeline] picture check failed for product ${id}: ${e.message}`); }
+  }
 
   /** Add flags, never remove: an existing flag with the same code is kept as it is. Used by the batch QA pass. */
   function addFlags(id, flags) {
@@ -199,7 +212,7 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
   }
 
   /** Generate (or regenerate) the design. `brief` given = the operator edited it. */
-  function generateDesign(id, { brief, actor = 'human' } = {}) {
+  function generateDesign(id, { brief, vary, actor = 'human' } = {}) {
     id = Number(id);
     return exclusive(id, async () => {
       let p = need(id);
@@ -209,11 +222,12 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
         if (nb !== p.brief) { db.prepare('UPDATE products SET brief = ?, updated_at = ? WHERE id = ?').run(nb, new Date().toISOString(), id); productEvent(db, id, { actor, note: 'brief edited' }); p = get(id); }
       }
       if (!p.brief) throw new PipelineError('The product has no brief');
-      const hits = scanFields(db, { brief: p.brief, niche: p.niche, keywords: kw(p) });
+      const varyText = vary === undefined || vary === null ? '' : clean(vary, 400, 'vary');
+      const hits = scanFields(db, { brief: p.brief, niche: p.niche, keywords: kw(p), vary: varyText });
       setFlag(id, 'blocklist', hits.length ? describeHits(hits) : null);
       if (p.stage === S.FAILED) p = stages.transition(id, S.IDEA, { actor, note: 'retry' });
 
-      const prompt = designPrompt(p);
+      const prompt = designPrompt(p) + (varyText ? ` Apply this change for this version: ${varyText}.` : '');
       let gen;
       const dim = primaryArea(p);
       try { gen = await adapters.imagegen.generate(prompt, { width: dim.width, height: dim.height, count: 1 }); }
@@ -230,8 +244,11 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
           .run(id, img.file, prompt, real.width, real.height, gen.costCents, gen.model, t, img.nativeWidth ?? real.width, img.nativeHeight ?? real.height, img.upscaled ? (img.upscaleMethod || 'upscaled') : null);
         db.prepare('UPDATE products SET model_used = ? WHERE id = ?').run(gen.model, id);
         earlyPrintFlag(id);
-        if (p.stage === S.DESIGN) { productEvent(db, id, { actor, note: `design regenerated (${gen.model}, ${real.width}x${real.height})` }); return get(id); }
-        return stages.transition(id, S.DESIGN, { actor, note: `design generated (${gen.model}, ${real.width}x${real.height})` });
+        earlyPictureFlag(id);
+        const seedNote = Number.isInteger(gen.seed) ? `, seed ${gen.seed}` : '';
+        const note = `${gen.model}, ${real.width}x${real.height}${seedNote}`;
+        if (p.stage === S.DESIGN) { productEvent(db, id, { actor, note: `design regenerated (${note})` }); return get(id); }
+        return stages.transition(id, S.DESIGN, { actor, note: `design generated (${note})` });
       } catch (e) { throw failure(p, e, actor, 'saving the design'); }
     });
   }
@@ -243,35 +260,156 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
     return manualPrompt(p, primaryArea(p));
   }
 
+  const DESIGN_STAGES = [S.IDEA, S.DESIGN, S.MOCKUP, S.DRAFTED, S.PENDING, S.FAILED];
+
+  /** Read a designs.image_path by basename only. A stored path is never trusted. */
+  function readDesignPng(design) {
+    const base = path.basename(String(design && design.image_path || ''));
+    if (!base || base === '.' || base === '..') throw new PipelineError('Design file is missing', 404, 'no_design');
+    const dir = path.resolve(dataDir || '.', 'images');
+    const file = path.resolve(dir, base);
+    if (file !== path.join(dir, base) || !fs.existsSync(file)) throw new PipelineError('Design file is missing', 404, 'no_design');
+    return fs.readFileSync(file);
+  }
+
+  /**
+   * Save PNG bytes as the latest design. Caller holds exclusive(id). Does not take the lock itself
+   * (a nested lock on the same product is a 409). Defaults match a manual upload: source manual, cost 0.
+   */
+  async function persistDesign(id, png, p, { actor = 'human', source = 'manual', model = 'manual', costCents = 0, prompt = null } = {}) {
+    let fit;
+    try {
+      const sz = readPngSize(png);
+      if (sz.width * sz.height > 100e6) throw new Error('image dimensions are too large');
+      fit = await fitToArea({ png, ...primaryArea(get(id)), upscale, log, tag: source });
+    } catch (e) { throw new PipelineError(`Not a usable PNG: ${e.message}`, 415, 'not_png'); }
+    const dir = path.join(dataDir, 'images');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = `${source === 'redraw' ? 'red' : 'man'}-${crypto.randomBytes(6).toString('hex')}.png`;
+    fs.writeFileSync(path.join(dir, file), fit.png);
+    const storedPrompt = prompt || designPrompt(p);
+    try {
+      db.prepare(`INSERT INTO designs(product_id,image_path,prompt,width,height,cost_cents,model,created_at,native_width,native_height,upscale_method,source)
+                  VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`)
+        .run(id, file, storedPrompt, fit.width, fit.height, costCents, model, new Date().toISOString(), fit.nativeWidth, fit.nativeHeight, fit.upscaled ? (fit.upscaleMethod || 'upscaled') : null, source);
+      db.prepare('UPDATE products SET model_used = ? WHERE id = ?').run(model, id);
+      earlyPrintFlag(id);
+      earlyPictureFlag(id);
+      const note = source === 'redraw' ? `region redrawn (${model}, ${fit.width}x${fit.height})` : `design uploaded (manual, ${fit.width}x${fit.height})`;
+      if (get(id).stage === S.DESIGN) { productEvent(db, id, { actor, note }); return get(id); }
+      return stages.transition(id, S.DESIGN, { actor, note });
+    } catch (e) { throw failure(get(id) || p, e, actor, 'saving the design'); }
+  }
+
   /**
    * Bring-your-own design: a PNG made elsewhere takes the same path a generated one does (upscale hook, real size read
    * from the PNG header, designs row, early print flag, transition to design_generated). Provenance: source='manual',
    * model='manual', cost 0 (so no `costs` row). Callers sniff the bytes first (routes); this re-checks it is a PNG.
    * This does not call the image gateway. The print-provider step later uploads this file.
    */
-  function attachDesign(id, png, { actor = 'human' } = {}) {
+  function attachDesign(id, png, { actor = 'human', source = 'manual', model = 'manual', costCents = 0, prompt = null } = {}) {
     id = Number(id);
     return exclusive(id, async () => {
       let p = need(id);
-      if (![S.IDEA, S.DESIGN, S.MOCKUP, S.DRAFTED, S.PENDING, S.FAILED].includes(p.stage)) throw new PipelineError(`A design cannot be added while the product is ${p.stage}`, 409, 'illegal_stage');
-      let fit;
-      try { const sz = readPngSize(png); if (sz.width * sz.height > 100e6) throw new Error('image dimensions are too large'); fit = await fitToArea({ png, ...primaryArea(p), upscale, log, tag: 'upload' }); }
-      catch (e) { throw new PipelineError(`Not a usable PNG: ${e.message}`, 415, 'not_png'); }
+      if (!DESIGN_STAGES.includes(p.stage)) throw new PipelineError(`A design cannot be added while the product is ${p.stage}`, 409, 'illegal_stage');
       if (p.stage === S.FAILED) p = stages.transition(id, S.IDEA, { actor, note: 'retry' });
-      const dir = path.join(dataDir, 'images');
-      fs.mkdirSync(dir, { recursive: true });
-      const file = `man-${crypto.randomBytes(6).toString('hex')}.png`;
-      fs.writeFileSync(path.join(dir, file), fit.png);
+      return persistDesign(id, png, p, { actor, source, model, costCents, prompt });
+    });
+  }
+
+  /**
+   * Redraw the marked region of the latest design. Unmarked pixels stay byte-identical apart from a 2px feather.
+   * Spend is recorded when the edit returns, before the composite is saved. An empty or near-full mask is refused
+   * before any spend. A provider other than Nous is refused without changing the stage.
+   */
+  function redrawRegion(id, maskPng, { prompt, actor = 'human', feather = 2 } = {}) {
+    id = Number(id);
+    return exclusive(id, async () => {
+      let p = need(id);
+      if (!DESIGN_STAGES.includes(p.stage)) throw new PipelineError(`A design cannot be redrawn while the product is ${p.stage}`, 409, 'illegal_stage');
+      const text = clean(prompt, 400, 'prompt');
+      if (text.length < 8) throw new PipelineError('Describe the change in at least 8 characters', 400, 'bad_prompt');
+      const provider = settings ? String(settings.get('image_provider', '') || '') : '';
+      if (provider && provider !== 'nous') throw new PipelineError('Redraw uses Nous Portal klein edit. Switch the image provider to Nous under Settings.', 409, 'edit_unsupported');
+      const design = db.prepare('SELECT * FROM designs WHERE product_id = ? ORDER BY id DESC LIMIT 1').get(id);
+      if (!design || !design.image_path) throw new PipelineError('The product has no design yet', 409, 'no_design');
+      if (!Buffer.isBuffer(maskPng) || maskPng.length === 0) throw new PipelineError('Send the mask as a PNG', 400, 'no_body');
+      const original = readDesignPng(design);
+      let size;
+      try { size = readPngSize(original); }
+      catch (e) { throw new PipelineError(`Not a usable PNG: ${e.message}`, 415, 'not_png'); }
+      try { decodePng(original); }
+      catch (e) {
+        throw new PipelineError(/bit depth/.test(e.message)
+          ? 'This design is a dry-run colour block and cannot be partly redrawn. Upload a PNG or generate with Nous first.'
+          : `Not a usable PNG: ${e.message}`, 415, 'not_png');
+      }
+      try { inspectMask(maskPng, size); }
+      catch (e) {
+        const code = e.code === 'mask_too_large' || e.code === 'empty_mask' || e.code === 'mask_size' ? e.code : 'bad_mask';
+        const status = code === 'mask_size' || /bit depth|Not a PNG|unsupported/.test(String(e.message)) ? 415 : 400;
+        throw new PipelineError(e.message, status, code);
+      }
+      const hits = scanFields(db, { brief: p.brief, niche: p.niche, keywords: kw(p), prompt: text });
+      setFlag(id, 'blocklist', hits.length ? describeHits(hits) : null);
+      if (p.stage === S.FAILED) p = stages.transition(id, S.IDEA, { actor, note: 'retry' });
+      const modelPrompt = `Edit this image. Apply only the following change, and leave every other part of the image unchanged: ${text}`;
+      const radius = Number.isInteger(feather) && feather >= 0 && feather <= 8 ? feather : 2;
+      let gen;
+      try { gen = await adapters.imagegen.edit(modelPrompt, { png: original }); }
+      catch (e) {
+        if (e && /Nous Portal|cannot edit a region|klein edit/i.test(String(e.message))) throw new PipelineError(e.message, 409, 'edit_unsupported');
+        throw failure(p, e, actor, 'region redraw');
+      }
+      if (!gen || !Buffer.isBuffer(gen.png) || gen.png.length === 0) throw failure(p, new Error('edit returned no image'), actor, 'region redraw');
+      if (gen.costCents > 0) spend.addCost({ productId: id, kind: 'image', amountCents: gen.costCents, note: gen.model });
+      let composited;
+      try { composited = compositeKeep(original, gen.png, maskPng, { feather: radius }); }
+      catch (e) { throw failure(p, e, actor, 'keeping the unmarked pixels'); }
+      return persistDesign(id, composited.png, p, { actor, source: 'redraw', model: gen.model || 'edit', costCents: gen.costCents || 0, prompt: text });
+    });
+  }
+
+  /**
+   * New product at design_generated, same brief and price, blueprint chosen from a sticker title.
+   * The latest PNG is attached (no image spend). selectPod/attach run on the NEW id, so this lock
+   * on the source product does not nest. A failure names the new id so it is not lost.
+   */
+  function startSticker(id, { blueprint, actor = 'human' } = {}) {
+    id = Number(id);
+    return exclusive(id, async () => {
+      const p = need(id);
+      const design = db.prepare('SELECT * FROM designs WHERE product_id = ? ORDER BY id DESC LIMIT 1').get(id);
+      if (!design || !design.image_path) throw new PipelineError('The product has no design yet', 409, 'no_design');
+      const png = readDesignPng(design);
+      const match = typeOf('sticker').match;
+      let bpId; let ppId; let title;
+      if (blueprint) {
+        const list = await adapters.pod.listBlueprints();
+        const rows = Array.isArray(list) ? list : ((list && list.blueprints) || []);
+        const hit = rows.find(b => String(b.id) === String(blueprint));
+        if (!hit || !match.test(String(hit.title || ''))) throw new PipelineError('That blueprint is not a sticker. Pick a catalog title that says sticker.', 422, 'not_sticker');
+        const providers = await adapters.pod.listPrintProviders(hit.id);
+        const plist = Array.isArray(providers) ? providers : ((providers && providers.providers) || []);
+        const pp = plist[0];
+        if (!pp) throw new PipelineError('That sticker blueprint has no print provider.', 422, 'no_provider');
+        bpId = String(hit.id); ppId = String(pp.id); title = hit.title;
+      } else {
+        const resolved = await resolveBlueprint('sticker', adapters, log);
+        if (!resolved.blueprint || !resolved.printProviderId) throw new PipelineError(resolved.note || 'No sticker blueprint is in the catalog.', 409, 'no_sticker');
+        bpId = resolved.blueprint; ppId = resolved.printProviderId; title = resolved.blueprintTitle;
+      }
+      const input = { brief: p.brief, niche: p.niche || '', keywords: kw(p) };
+      if (Number.isInteger(p.list_price_cents)) input.listPrice = p.list_price_cents / 100;
+      if (Number.isInteger(p.shipping_cents)) input.shipping = p.shipping_cents / 100;
+      const created = create(input, { actor });
       try {
-        db.prepare(`INSERT INTO designs(product_id,image_path,prompt,width,height,cost_cents,model,created_at,native_width,native_height,upscale_method,source)
-                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`)
-          .run(id, file, designPrompt(p), fit.width, fit.height, 0, 'manual', new Date().toISOString(), fit.nativeWidth, fit.nativeHeight, fit.upscaled ? (fit.upscaleMethod || 'upscaled') : null, 'manual');
-        db.prepare('UPDATE products SET model_used = ? WHERE id = ?').run('manual', id);
-        earlyPrintFlag(id);
-        const note = `design uploaded (manual, ${fit.width}x${fit.height})`;
-        if (p.stage === S.DESIGN) { productEvent(db, id, { actor, note }); return get(id); }
-        return stages.transition(id, S.DESIGN, { actor, note });
-      } catch (e) { throw failure(p, e, actor, 'saving the design'); }
+        await selectPod(created.id, { blueprint: bpId, providerId: ppId });
+        const product = await attachDesign(created.id, png, { actor });
+        return { product, blueprintTitle: title };
+      } catch (e) {
+        throw new PipelineError(`${e.message} The sticker product #${created.id} was still created.`, e.status || 502, e.code || 'sticker_failed', { productId: created.id });
+      }
     });
   }
 
@@ -681,7 +819,7 @@ function makePipeline({ db, stages, adapters, spend, settings, dataDir, isDryRun
     throw new PipelineError('The product did not reach PENDING_APPROVAL (loop guard).', 500, 'no_convergence');
   }
 
-  return { advance, checkPrint, printRule, addFlags, rescanBlocklist, saveCopy, create, generateDesign, manualDesignPrompt, attachDesign, draftCopy, editCopy, detail, validateInput, PipelineError, selectPod, createPodProduct, refreshMockups, draftListing, setPrice, submit, approve, reject, archive, removeDesign, removeProduct, marginPreview, applyMargin, exclusive, get, need, setFlag };
+  return { advance, checkPrint, printRule, addFlags, rescanBlocklist, saveCopy, create, generateDesign, manualDesignPrompt, attachDesign, redrawRegion, startSticker, draftCopy, editCopy, detail, validateInput, PipelineError, selectPod, createPodProduct, refreshMockups, draftListing, setPrice, submit, approve, reject, archive, removeDesign, removeProduct, marginPreview, applyMargin, exclusive, get, need, setFlag };
 }
 
 module.exports = { makePipeline, PipelineError, PRINT_W, PRINT_H };

@@ -18,6 +18,8 @@ const BLUEPRINTS = [
     variants: [['11oz', 0]] },
   { id: 'stub-poster', title: 'Matte Poster (stub)', brand: 'Stub', baseCents: 1100, placeholder: { position: 'front', width: 5400, height: 7200 },
     variants: [['12x16 in', 0], ['18x24 in', 700]] },
+  { id: 'stub-sticker', title: 'Kiss-cut Sticker (stub)', brand: 'Stub', baseCents: 250, placeholder: { position: 'front', width: 2800, height: 2800 },
+    variants: [['3x3 in', 0]] },
 ];
 const GENERIC = { id: '?', title: 'Generic blueprint (stub)', baseCents: 1250, placeholder: { position: 'front', width: 4500, height: 5400 }, variants: [['M', 0]] };
 const bp = id => BLUEPRINTS.find(b => String(b.id) === String(id)) || { ...GENERIC, id: String(id) };

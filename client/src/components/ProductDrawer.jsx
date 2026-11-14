@@ -2,13 +2,14 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { api, dollars } from '../api.js';
 import FeeBreakdown from './FeeBreakdown.jsx';
 import ChannelPanel from './ChannelPanel.jsx';
+import Studio from './Studio.jsx';
 
 // Etsy limits, shown live. Corroborated 2026-10-05, official page not read: see server/domain/etsy-rules.js.
 const LIM = { title: 140, tags: 13, tag: 20 };
 const Counter = ({ n, max, label }) => <span className={`counter ${n > max ? 'neg' : n === max ? 'warn' : 'muted'}`}>{n}/{max} {label}</span>;
 const parseTags = (s) => s.split(',').map((t) => t.trim()).filter(Boolean);
 
-export default function ProductDrawer({ id, onClose, onChanged, askConfirm, onOpenPlaybook }) {
+export default function ProductDrawer({ id, onClose, onChanged, askConfirm, onOpenPlaybook, onOpenProduct }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState('');
@@ -19,6 +20,7 @@ export default function ProductDrawer({ id, onClose, onChanged, askConfirm, onOp
   const [blockers, setBlockers] = useState([]);
   const [edit, setEdit] = useState({ title: '', tags: '', price: '' });
   const [manual, setManual] = useState(null);
+  const [vary, setVary] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -34,6 +36,22 @@ export default function ProductDrawer({ id, onClose, onChanged, askConfirm, onOp
     try { const out = await fn(); await load(); onChanged(); return out; }
     catch (e) { setErr(e.message); await load(); onChanged(); }
     finally { setBusy(''); }
+  }
+
+  async function makeSticker(blueprint) {
+    setBusy('sticker'); setErr('');
+    try {
+      const r = await api.startSticker(id, blueprint);
+      onChanged();
+      if (onOpenProduct && r.product) onOpenProduct(r.product.id);
+      else await load();
+      return r;
+    } catch (e) {
+      setErr(e.message);
+      if (e.data && e.data.productId && onOpenProduct) onOpenProduct(e.data.productId);
+      else { await load(); onChanged(); }
+      return null;
+    } finally { setBusy(''); }
   }
 
   async function approve() {
@@ -75,6 +93,8 @@ export default function ProductDrawer({ id, onClose, onChanged, askConfirm, onOp
   const eco = d.economics; const st = p.stage;
   const canEdit = ['design_generated', 'mockup_ready', 'listing_drafted', 'PENDING_APPROVAL'].includes(p.stage);
   const canRegen = ['idea', 'design_generated', 'mockup_ready', 'listing_drafted', 'PENDING_APPROVAL', 'failed'].includes(p.stage);
+  const podStandIn = !p.pod_external_id || String(p.pod_external_id).startsWith('stub-') || p.pod_cost_source === 'estimate';
+  const showPod = latest && p.blueprint && (st === 'design_generated' || st === 'failed' || (podStandIn && ['mockup_ready', 'listing_drafted', 'PENDING_APPROVAL'].includes(st)));
 
   return (
     <aside className="drawer wide" aria-label={`Product ${p.id}`}>
@@ -91,7 +111,15 @@ export default function ProductDrawer({ id, onClose, onChanged, askConfirm, onOp
             {latest.width}x{latest.height}px{latest.upscaleMethod ? ` - upscaled from ${latest.nativeWidth}x${latest.nativeHeight} (${latest.upscaleMethod})` : ''}
             {latest.upscaleMethod && <div className="warn">Upscaled images add pixels, not detail; check print quality before approving.</div>}
           </div>
+          <div className="row"><a className="button" href={latest.url} download={`design-${p.id}.png`}>Save PNG</a></div>
         </section>
+      )}
+
+      {latest && canRegen && (
+        <Studio design={latest} productId={p.id} disabled={!!busy} busy={busy}
+          onUpload={(file) => run('upload', () => api.uploadDesign(id, file))}
+          onRedraw={(file, prompt) => run('redraw', () => api.redrawRegion(id, file, prompt))}
+          onSticker={makeSticker} />
       )}
 
       {d.printReadiness && (
@@ -123,9 +151,10 @@ export default function ProductDrawer({ id, onClose, onChanged, askConfirm, onOp
         {['idea', 'design_generated', 'mockup_ready', 'listing_drafted', 'PENDING_APPROVAL'].includes(st) && (
           <div className="row"><label className="grow">List price (USD)<input type="number" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} /></label>
             <button disabled={!!busy || price === ''} onClick={() => run('price', () => api.setPrice(id, { listPrice: price }))}>Set price</button></div>)}
+        {showPod && p.pod_external_id && String(p.pod_external_id).startsWith('stub-') && <div className="muted small">The current mockups are the dry-run stand-in. This step replaces them. With DRY RUN on, it fakes them again.</div>}
         <div className="row">
           {['idea', 'design_generated', 'mockup_ready', 'listing_drafted'].includes(st) && p.blueprint && p.print_provider_id && <button disabled={!!busy} onClick={() => run('adv', () => api.advance(id))}>{busy === 'adv' ? 'Running...' : 'Run to approval'}</button>}
-          {(st === 'design_generated' || st === 'failed') && latest && p.blueprint && <button disabled={!!busy} onClick={() => run('pod', () => api.createPod(id))}>{busy === 'pod' ? 'Creating...' : 'Create POD product + mockups'}</button>}
+          {showPod && <button disabled={!!busy} onClick={() => run('pod', () => api.createPod(id))}>{busy === 'pod' ? 'Creating...' : 'Create POD product + mockups'}</button>}
           {st === 'mockup_ready' && <button disabled={!!busy} onClick={() => run('draft', () => api.draftListing(id))}>{busy === 'draft' ? 'Drafting...' : 'Draft listing + margin'}</button>}
           {['mockup_ready', 'listing_drafted', 'PENDING_APPROVAL'].includes(st) && p.pod_external_id && !p.pod_external_id.startsWith('stub-') && <button className="ghost" disabled={!!busy} onClick={() => run('mock', () => api.refreshMockups(id))}>Refresh mockups</button>}
           {st === 'listing_drafted' && <button disabled={!!busy} onClick={() => run('submit', () => api.submit(id))}>Submit for approval</button>}
@@ -139,9 +168,10 @@ export default function ProductDrawer({ id, onClose, onChanged, askConfirm, onOp
       <section>
         <h4>Brief</h4>
         <textarea rows={4} value={brief} maxLength={2000} onChange={(e) => setBrief(e.target.value)} disabled={!canRegen} />
-        <div className="muted small">The latest saved PNG is the print file. The print-provider step and publishing reuse it, including after dry run is turned off. Generate and Regenerate are the only image spends. An uploaded PNG is kept and costs nothing.</div>
+        <div className="muted small">The latest saved PNG is the print file. The print-provider step and publishing reuse it, including after dry run is turned off. Generate, Regenerate, and Redraw marked area spend a real image even while dry run is on. Text and stickers saved from the studio cost nothing. Each regenerate asks for a new picture. Name a change below to aim it. Mark in the studio keeps the rest of the current file.</div>
+        {canRegen && <label>What to change this time<input value={vary} maxLength={400} disabled={!!busy} placeholder="Optional. Blank still draws a new picture of this brief." onChange={(e) => setVary(e.target.value)} /></label>}
         <div className="row">
-          <button disabled={!canRegen || !brief.trim() || !!busy} onClick={() => run('design', () => api.generateDesign(id, brief))}>
+          <button disabled={!canRegen || !brief.trim() || !!busy} onClick={() => run('design', () => api.generateDesign(id, brief, vary.trim()))}>
             {busy === 'design' ? 'Generating...' : p.stage === 'idea' || p.stage === 'failed' ? 'Generate design' : 'Regenerate design'}
           </button>
           <label className={`file-btn ${!canRegen || busy ? 'disabled' : ''}`}>Upload PNG
@@ -154,7 +184,7 @@ export default function ProductDrawer({ id, onClose, onChanged, askConfirm, onOp
           <ul className="design-list">
             {d.designs.map((des) => (
               <li key={des.id} className="row">
-                <span className="small">#{des.id} {des.width}x{des.height} {des.source === 'manual' ? 'uploaded' : (des.model || '')}</span>
+                <span className="small">#{des.id} {des.width}x{des.height} {des.source === 'manual' ? 'uploaded' : des.source === 'redraw' ? 'redrawn' : (des.model || '')}</span>
                 <button type="button" className="ghost" disabled={!!busy} onClick={() => ask('Delete this design?', `Delete design #${des.id} and its PNG. The product stays, and any other design stays. Spend already recorded stays on the daily cap.`, () => api.removeDesign(id, des.id))}>Delete</button>
               </li>
             ))}

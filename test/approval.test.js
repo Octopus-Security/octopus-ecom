@@ -31,7 +31,7 @@ const approveFlow = async (id) => { const a = await j('POST', `/api/products/${i
 
 test('catalog: stub blueprints carry print-area pixels; the product records them for M4', async () => {
   const bps = (await j('GET', '/api/pod/blueprints')).body;
-  assert.deepEqual(bps.blueprints.map(b => b.id), ['stub-tee', 'stub-mug', 'stub-poster']);
+  assert.deepEqual(bps.blueprints.map(b => b.id), ['stub-tee', 'stub-mug', 'stub-poster', 'stub-sticker']);
   const id = await drafted();
   const det = await get(id);
   assert.deepEqual(det.product.print_spec.positions, [{ position: 'front', width: 4500, height: 5400 }]);

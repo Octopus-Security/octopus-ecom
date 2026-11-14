@@ -43,6 +43,13 @@ function create({ cfg, credentials, isDryRun, http, log, spend, upscale, setting
     implemented: true,
     estimate: (...a) => build().estimate(...a),
     generate: (...a) => build().generate(...a),
+    edit: async (...a) => {
+      const sel = resolveSelection({ cfg, settings });
+      if (sel.provider !== 'nous') throw new Error('Redraw uses Nous Portal klein edit. Switch the image provider to Nous under Settings.');
+      const impl = build();
+      if (typeof impl.edit !== 'function') throw new Error('Redraw uses Nous Portal klein edit. This provider cannot edit a region.');
+      return impl.edit(...a);
+    },
   };
   // Generation is spend, not a marketplace write: real whenever a key exists, even in DRY_RUN.
   // The daily cap is enforced INSIDE each real adapter (a refusal, not a silent fall back to a stub image).

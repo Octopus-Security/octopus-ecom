@@ -58,10 +58,14 @@ test('Klein asks for the snapped size, Key auth, and a fal.media PNG with no key
   assert.equal(post.url, 'https://fal-queue-gateway.nousresearch.com/fal-ai/flux-2/klein/9b');
   assert.equal(post.headers.Authorization, `Key ${TOKEN}`);
   assert.equal(post.headers['Idempotency-Key'], undefined);
-  assert.deepEqual(post.body, {
+  assert.equal(Number.isInteger(post.body.seed), true);
+  assert.ok(post.body.seed >= 1 && post.body.seed < 2147483647);
+  const { seed, ...rest } = post.body;
+  assert.deepEqual(rest, {
     prompt: 'a frog writing code', image_size: { width: 896, height: 1024 },
     num_inference_steps: 4, output_format: 'png', enable_safety_checker: false,
   });
+  assert.equal(out.seed, seed);
   assert.equal(out.costCents, 1);
   assert.equal(out.model, DEFAULT_MODEL);
   const cdn = f.calls.filter((c) => String(c.url).includes('fal.media'));
@@ -71,6 +75,15 @@ test('Klein asks for the snapped size, Key auth, and a fal.media PNG with no key
   const file = fs.readFileSync(path.join(dataDir, 'images', out.images[0].file));
   assert.equal(file.subarray(0, 4).toString('hex'), '89504e47');
   assert.deepEqual(readPngSize(file), { width: 8, height: 12 });
+});
+
+test('two klein generates of the same prompt send different seeds', async () => {
+  const { f, a } = adapter(png());
+  await a.generate('a toad on a forklift', { width: 64, height: 64 });
+  await a.generate('a toad on a forklift', { width: 64, height: 64 });
+  const seeds = f.calls.filter((c) => c.method === 'POST').map((c) => c.body.seed);
+  assert.equal(seeds.length, 2);
+  assert.notEqual(seeds[0], seeds[1]);
 });
 
 test('a status_url on another host is not followed', async () => {
@@ -157,6 +170,52 @@ test('DRY_RUN with a nous key still calls the gateway and saves that PNG', async
   const file = fs.readFileSync(path.join(d.dataDir, 'images', out.images[0].file));
   assert.equal(file.subarray(0, 4).toString('hex'), '89504e47');
   assert.notEqual(readPngSize(file).width, 3951);
+});
+
+test('klein edit posts a downscaled data URI, charges twice the klein ceiling, and does not save a file', async () => {
+  const { f, a, dataDir } = adapter(gradientPng(4, 4));
+  const src = gradientPng(64, 48);
+  const out = await a.edit('fix the tail and leave the rest', { png: src });
+  const post = f.calls.find((c) => c.method === 'POST');
+  const size = printSize(64, 48);
+  assert.equal(post.url, 'https://fal-queue-gateway.nousresearch.com/fal-ai/flux-2/klein/9b/edit');
+  assert.equal(f.calls.some((c) => c.url === 'https://fal-queue-gateway.nousresearch.com/fal-ai/flux-2/klein/9b'), false);
+  assert.equal(post.headers.Authorization, `Key ${TOKEN}`);
+  assert.equal(post.body.num_inference_steps, 4);
+  assert.equal(Number.isInteger(post.body.seed), true);
+  assert.equal(post.body.output_format, 'png');
+  assert.equal(post.body.enable_safety_checker, false);
+  assert.deepEqual(post.body.image_size, size);
+  assert.match(post.body.prompt, /fix the tail/);
+  assert.match(post.body.image_urls[0], /^data:image\/png;base64,/);
+  assert.deepEqual(readPngSize(Buffer.from(post.body.image_urls[0].slice('data:image/png;base64,'.length), 'base64')), size);
+  assert.equal(out.costCents, Math.max(1, Math.ceil((size.width * size.height) / 1e6) * 2));
+  assert.equal(out.model, 'fal-ai/flux-2/klein/9b/edit');
+  assert.equal(out.png.subarray(0, 4).toString('hex'), '89504e47');
+  assert.equal(fs.existsSync(path.join(dataDir, 'images')), false);
+  const cdn = f.calls.filter((c) => String(c.url).includes('fal.media'));
+  assert.equal(cdn.length, 1);
+  assert.equal(cdn[0].headers.Authorization, undefined);
+});
+
+test('a nous key routes edit through klein edit', async () => {
+  const f = fakeFetch(responder(gradientPng(4, 4)));
+  const wired = makeDeps({ NOUS_API_KEY: TOKEN, IMAGE_UPSCALE: 'off' }, { http: fakeHttp(f), upscale: null });
+  assert.equal(wired.adapters.imagegen.describe().methods.edit, 'real');
+  const out = await wired.adapters.imagegen.edit('fix the tail', { png: gradientPng(32, 24) });
+  assert.equal(out.model, 'fal-ai/flux-2/klein/9b/edit');
+  assert.equal(f.calls[0].url, 'https://fal-queue-gateway.nousresearch.com/fal-ai/flux-2/klein/9b/edit');
+  assert.equal(f.calls.some((c) => c.url === 'https://fal-queue-gateway.nousresearch.com/fal-ai/flux-2/klein/9b'), false);
+});
+
+test('edit refuses a 1-bit PNG and a zero cap before any gateway call', async () => {
+  const { solidPng } = require('../server/png');
+  const blocked = adapter(png());
+  await assert.rejects(blocked.a.edit('fix the tail', { png: solidPng(32, 32) }), /usable PNG/);
+  assert.equal(blocked.f.calls.length, 0);
+  const capped = adapter(png(), { spend: makeDeps({ DAILY_SPEND_CAP: '0' }).spend });
+  await assert.rejects(capped.a.edit('fix the tail', { png: gradientPng(64, 48) }), SpendCapError);
+  assert.equal(capped.f.calls.length, 0);
 });
 
 test('a small nous PNG is kept when print coverage fails, and create-pod does not generate again', async () => {

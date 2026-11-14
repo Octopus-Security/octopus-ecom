@@ -65,6 +65,8 @@ function createOpenAiImages({ http, credentials, log = console, dataDir, spend, 
       // Billed per image returned; never more than the estimate for the count asked.
       return { images, costCents: imageCostCents(model, q, size, images.length), model };
     },
+    // The contract lists edit. OpenAI is not a selectable shop provider, and it does not do a masked redraw.
+    async edit() { throw new Error('Redraw uses Nous Portal klein edit. OpenAI images are not a selectable provider.'); },
   };
 }
 module.exports = { createOpenAiImages, URL_GEN };

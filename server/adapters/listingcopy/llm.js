@@ -11,7 +11,8 @@ const SYSTEM = [
   'Rules: title at most 140 characters; at most 13 tags, each at most 20 characters, lowercase words/phrases only (letters, digits, spaces, hyphens);',
   'write the way a buyer would search (natural phrases like "retro cat poster", gift occasions, styles), front-load the strongest phrase in the title;',
   'NO keyword stuffing (do not repeat a phrase or list synonyms), NO brand names, trademarks, franchise, character, team or celebrity names, no claims of being "official" or "licensed";',
-  'the description is 80-200 words of plain honest prose about the design and the product; no emoji.',
+  'the description is 80-200 words of plain honest prose about the design and the product; no emoji;',
+  'do not claim the print is crisp, sharp, high-resolution, or handmade. A production partner prints and ships it. Describe the picture and who it is for.',
 ].join(' ');
 
 function extractJson(text) {

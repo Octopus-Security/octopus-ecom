@@ -84,6 +84,7 @@ export default function App() {
       {composer && <Composer onClose={() => { setComposer(false); refresh(); }} onChanged={refresh} onOpen={(id) => { setComposer(false); setOpenId(id); }} />}
       {batchDialog && <BatchDialog onClose={() => setBatchDialog(false)} onStarted={(id) => { setBatchDialog(false); setBatchFocus(id); setView('batches'); refresh(); }} />}
       {openId !== null && <ProductDrawer id={openId} onClose={() => { setOpenId(null); refresh(); }} onChanged={refresh} askConfirm={setConfirm}
+        onOpenProduct={setOpenId}
         onOpenPlaybook={(id, productId) => { setPb({ id, productId: productId || 0 }); setView('playbooks'); }} />}
       {confirm && <ConfirmModal {...confirm} onClose={() => setConfirm(null)} />}
     </div>

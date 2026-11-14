@@ -78,7 +78,8 @@ function router(deps) {
   }));
   // POST /api/products/:id/generate-design {brief?}   (a brief = the operator edited it = regenerate)
   r.post('/products/:id/generate-design', wrap(async (req, res) => {
-    const p = await pipe.generateDesign(req.params.id, { brief: (req.body || {}).brief, actor: actorOf(req) });
+    const body = req.body || {};
+    const p = await pipe.generateDesign(req.params.id, { brief: body.brief, vary: body.vary, actor: actorOf(req) });
     res.json({ ok: true, product: p });
   }));
   // GET /api/products/:id/design-prompt — what to paste into an external image tool (Nano Banana, Grok, Claude...).
@@ -94,6 +95,23 @@ function router(deps) {
     if (kind !== 'png') return res.status(415).json({ error: 'That is not a PNG image', code: 'not_image' });
     const p = await pipe.attachDesign(req.params.id, buf, { actor: actorOf(req) });
     res.json({ ok: true, product: p });
+  }));
+  // POST /api/products/:id/redraw?prompt= — raw mask PNG. The prompt stays out of the JSON body (1mb limit).
+  r.post('/products/:id/redraw', express.raw({ type: () => true, limit: MAX_UPLOAD }), wrap(async (req, res) => {
+    const buf = req.body;
+    if (!Buffer.isBuffer(buf) || buf.length === 0) return res.status(400).json({ error: 'Send the mask as the raw request body', code: 'no_body' });
+    const kind = sniffImage(buf);
+    if (kind !== 'png') return res.status(415).json({ error: 'The mask must be a PNG', code: 'not_image' });
+    const q = req.query.prompt;
+    const prompt = Array.isArray(q) ? q[0] : q;
+    const p = await pipe.redrawRegion(req.params.id, buf, { prompt, actor: actorOf(req) });
+    res.json({ ok: true, product: p });
+  }));
+  // POST /api/products/:id/sticker {blueprint?} — a new sticker product using the latest saved PNG. No image spend.
+  r.post('/products/:id/sticker', wrap(async (req, res) => {
+    const b = req.body || {};
+    const out = await pipe.startSticker(req.params.id, { blueprint: b.blueprint, actor: actorOf(req) });
+    res.status(201).json({ ok: true, product: out.product, blueprintTitle: out.blueprintTitle });
   }));
   r.post('/products/:id/draft-copy', wrap(async (req, res) => {
     res.json({ ok: true, ...(await pipe.draftCopy(req.params.id, { actor: actorOf(req) })) });
@@ -314,7 +332,7 @@ function errorHandler(deps) {
     if (err instanceof ConfirmError) return res.status(409).json({ error: err.message, code: err.code });
     if (err.name === 'DryRunError') return res.status(400).json({ error: err.message });
     if (err.name === 'StageError') return res.status(err.code === 'not_found' ? 404 : 409).json({ error: err.message, code: err.code });
-    if (err.name === 'PipelineError') return res.status(err.status).json({ error: err.message, code: err.code, ...(err.failed ? { failed: true } : {}), ...(err.readiness ? { readiness: err.readiness } : {}) });
+    if (err.name === 'PipelineError') return res.status(err.status).json({ error: err.message, code: err.code, ...(err.failed ? { failed: true } : {}), ...(err.readiness ? { readiness: err.readiness } : {}), ...(err.productId ? { productId: err.productId } : {}) });
     if (err.name === 'ChannelError') return res.status(err.status || 400).json({ error: err.message, code: err.code });
     if (err.name === 'BatchError') return res.status(err.status).json({ error: err.message, code: err.code });
     if (err.name === 'SpendCapError') return res.status(429).json({ error: err.message, code: 'spend_cap' });

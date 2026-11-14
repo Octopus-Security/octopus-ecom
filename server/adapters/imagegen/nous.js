@@ -9,8 +9,10 @@
  *   (fal_client SyncClient), not Bearer. The response carries request_id, status_url,
  *   response_url. Poll until COMPLETED (IN_QUEUE, IN_PROGRESS; FAILED is an error).
  *   The result is images[].url. Klein accepts prompt, image_size as a preset or a
- *   custom {width,height}, num_inference_steps (default 4), output_format png, and
- *   enable_safety_checker. Klein's support list does not include num_images.
+ *   custom {width,height}, num_inference_steps (default 4), seed, output_format png, and
+ *   enable_safety_checker. The model page says an omitted seed is random. This shop
+ *   sends one anyway: identical bodies were coming back as the same picture.
+ *   Klein's support list does not include num_images.
  *   Hermes defaults: steps 4, output_format png, enable_safety_checker false.
  *   flux-2-pro also has guidance_scale and safety_tolerance. qwen-image has steps,
  *   guidance, acceleration, and output_format. ideogram v3 does not take output_format.
@@ -26,12 +28,16 @@
  * A saved PNG is reused later by the print-provider step; this module runs only when
  * someone asks for a new image.
  */
+const crypto = require('node:crypto');
 const { saveImage, checkCount } = require('./shared');
 const { gatewayAccessToken } = require('../../nous-portal');
+const { decodePng, encodePng, resizeBilinear } = require('../../png');
 
 const GATEWAY_ORIGIN = 'https://fal-queue-gateway.nousresearch.com';
 const GATEWAY_HOST = 'fal-queue-gateway.nousresearch.com';
 const DEFAULT_MODEL = 'fal-ai/flux-2/klein/9b';
+/** Region redraw. Klein edit rewrites the whole frame; the shop composites the mask locally. */
+const EDIT_MODEL = 'fal-ai/flux-2/klein/9b/edit';
 
 /** Per-image ceilings in cents. Klein/pro/qwen are cents per megapixel, rounded up. Ideogram is a flat top of its published range. */
 const PRICE = {
@@ -73,10 +79,18 @@ function centsFor(model, w, h) {
   return Math.ceil(((w * h) / 1e6) * spec.centsPerMp);
 }
 
-function requestBody(model, prompt, size) {
+/** A seed the model page accepts. Callers may pass one; otherwise each request gets its own. */
+function pickSeed(seed) {
+  if (seed === undefined || seed === null || seed === '') return crypto.randomInt(1, 2147483647);
+  const n = Number(seed);
+  if (!Number.isInteger(n) || n < 0 || n > 2147483647) throw new Error('seed must be a whole number from 0 to 2147483647');
+  return n;
+}
+
+function requestBody(model, prompt, size, seed) {
   const image_size = { width: size.width, height: size.height };
   if (model === 'fal-ai/flux-2/klein/9b') {
-    return { prompt, image_size, num_inference_steps: 4, output_format: 'png', enable_safety_checker: false };
+    return { prompt, image_size, seed, num_inference_steps: 4, output_format: 'png', enable_safety_checker: false };
   }
   if (model === 'fal-ai/flux-2-pro') {
     return { prompt, image_size, guidance_scale: 4.5, safety_tolerance: '5' };
@@ -127,11 +141,12 @@ function createNousImages({
       const size = printSize(width, height);
       return { ...size, costCents: centsFor(model, size.width, size.height) * count };
     },
-    async generate(brief, { width = 4500, height = 5400, count = 1 } = {}) {
+    async generate(brief, { width = 4500, height = 5400, count = 1, seed } = {}) {
       checkCount(count);
       const size = printSize(width, height);
       const each = centsFor(model, size.width, size.height);
       const estimate = each * count;
+      const usedSeed = pickSeed(seed);
       if (spend) spend.assertCanSpend(estimate);
       const key = await gatewayAccessToken({
         read: () => credentials.get('nous'),
@@ -141,11 +156,14 @@ function createNousImages({
       });
       const headers = { Authorization: `Key ${key}` };
       const images = [];
+      let lastSeed = usedSeed;
       for (let n = 0; n < count; n++) {
+        const seedN = n === 0 ? usedSeed : pickSeed();
+        lastSeed = seedN;
         let submitted;
         try {
           const res = await http.request(`${GATEWAY_ORIGIN}/${model}`, {
-            method: 'POST', headers, json: requestBody(model, brief, size), redirect: 'manual', timeoutMs: 60000,
+            method: 'POST', headers, json: requestBody(model, brief, size, seedN), redirect: 'manual', timeoutMs: 60000,
           });
           try { submitted = res.json(); } catch { throw new Error('Nous image gateway returned a non-JSON submit response'); }
         } catch (e) { throw gatewayError(e); }
@@ -183,11 +201,84 @@ function createNousImages({
           bytes = file.bytes;
         } catch (e) { throw gatewayError(e); }
         if (!bytes || !bytes.length) throw new Error('Nous image download was empty');
-        images.push(await saveImage({ png: bytes, width, height, upscale, log, dataDir, extra: { requestedSize: `${size.width}x${size.height}` } }));
+        const returned = Number.isInteger(result.seed) ? result.seed : seedN;
+        lastSeed = returned;
+        images.push(await saveImage({ png: bytes, width, height, upscale, log, dataDir, extra: { requestedSize: `${size.width}x${size.height}`, seed: returned } }));
       }
-      return { images, costCents: each * images.length, model };
+      return { images, costCents: each * images.length, model, seed: lastSeed };
+    },
+    /**
+     * Klein edit of one PNG. The model has no mask: callers composite. Returns the raw PNG
+     * (not a saved file) at the snapped print size. Price is klein cents for that size, twice
+     * (input and output), checked before any HTTP call. Minimum 1 cent.
+     */
+    async edit(prompt, { png } = {}) {
+      if (!Buffer.isBuffer(png) || png.length === 0) throw new Error('edit needs the design PNG');
+      let img;
+      try { img = decodePng(png); }
+      catch (e) { throw new Error(`Not a usable PNG for edit: ${e.message}`); }
+      const size = printSize(img.width, img.height);
+      const scaled = img.width === size.width && img.height === size.height ? img : resizeBilinear(img, size.width, size.height);
+      const bytesIn = encodePng(scaled);
+      const usedSeed = pickSeed();
+      const costCents = Math.max(1, centsFor(DEFAULT_MODEL, size.width, size.height) * 2);
+      if (spend) spend.assertCanSpend(costCents);
+      const key = await gatewayAccessToken({
+        read: () => credentials.get('nous'),
+        http,
+        save: credentials.set ? (value) => credentials.set('nous', value) : null,
+        forget: credentials.remove ? () => credentials.remove('nous') : null,
+      });
+      const headers = { Authorization: `Key ${key}` };
+      const body = {
+        prompt, image_urls: [`data:image/png;base64,${bytesIn.toString('base64')}`],
+        image_size: { width: size.width, height: size.height },
+        seed: usedSeed, num_inference_steps: 4, output_format: 'png', enable_safety_checker: false,
+      };
+      let submitted;
+      try {
+        const res = await http.request(`${GATEWAY_ORIGIN}/${EDIT_MODEL}`, {
+          method: 'POST', headers, json: body, redirect: 'manual', timeoutMs: 60000,
+        });
+        try { submitted = res.json(); } catch { throw new Error('Nous image gateway returned a non-JSON submit response'); }
+      } catch (e) { throw gatewayError(e); }
+      const requestId = String(submitted && submitted.request_id || '');
+      if (!/^[A-Za-z0-9_-]+$/.test(requestId)) throw new Error('Nous image gateway returned an unexpected request id');
+      const statusUrl = httpsHost(submitted.status_url, GATEWAY_HOST) ? submitted.status_url : `${GATEWAY_ORIGIN}/${EDIT_MODEL}/requests/${requestId}/status`;
+      const resultUrl = httpsHost(submitted.response_url, GATEWAY_HOST) ? submitted.response_url : `${GATEWAY_ORIGIN}/${EDIT_MODEL}/requests/${requestId}`;
+      let result;
+      for (let i = 0; ; i++) {
+        let polled;
+        try {
+          const res = await http.request(statusUrl, { method: 'GET', headers, redirect: 'manual' });
+          try { polled = res.json(); } catch { throw new Error('Nous image gateway returned a non-JSON status'); }
+        } catch (e) { throw gatewayError(e); }
+        const st = String(polled.status || '').toUpperCase();
+        if (st === 'COMPLETED') {
+          try {
+            const done = await http.request(resultUrl, { method: 'GET', headers, redirect: 'manual' });
+            try { result = done.json(); } catch { throw new Error('Nous image gateway returned a non-JSON result'); }
+          } catch (e) { throw gatewayError(e); }
+          break;
+        }
+        if (st === 'FAILED') throw new Error(`Nous image generation failed: ${polled.error || polled.detail || 'FAILED'}`);
+        if (st !== 'IN_QUEUE' && st !== 'IN_PROGRESS') throw new Error(`Nous image gateway returned status "${st || 'empty'}"`);
+        if (i + 1 >= maxPolls) throw new Error('Nous image generation did not finish in time');
+        await sleep(pollMs);
+      }
+      const list = result && Array.isArray(result.images) ? result.images : [];
+      const imageUrl = list.map((item) => item && item.url).find((u) => typeof u === 'string' && u);
+      if (!imageUrl) throw new Error('Nous image gateway returned no image URL');
+      if (!imageHostOk(imageUrl)) throw new Error('Refusing to download a design from a host other than fal.media');
+      let bytes;
+      try {
+        const file = await http.request(imageUrl, { method: 'GET', binary: true, redirect: 'manual', timeoutMs: 60000 });
+        bytes = file.bytes;
+      } catch (e) { throw gatewayError(e); }
+      if (!bytes || !bytes.length) throw new Error('Nous image download was empty');
+      return { png: bytes, costCents, model: EDIT_MODEL, width: size.width, height: size.height, seed: usedSeed };
     },
   };
 }
 
-module.exports = { createNousImages, printSize, GATEWAY_ORIGIN, GATEWAY_HOST, NOUS_MODELS, DEFAULT_MODEL };
+module.exports = { createNousImages, printSize, GATEWAY_ORIGIN, GATEWAY_HOST, NOUS_MODELS, DEFAULT_MODEL, EDIT_MODEL };

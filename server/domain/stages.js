@@ -72,6 +72,8 @@ function approvalSummary(product, { dryRun } = {}) {
   if (pn) lines.push(`PRINT-READINESS: ${pn.detail}.`);
   const prv = flags.find(f => f.code === 'print_review');
   if (prv) lines.push(`PRINT REVIEW: ${prv.detail}. Look at the mockup before approving.`);
+  const pic = flags.find(f => f.code === 'picture_blank' || f.code === 'picture_flat');
+  if (pic) lines.push(`PICTURE CHECK: ${pic.detail}`);
   const qa = flags.filter(f => String(f.code).startsWith('qa_'));
   if (qa.length) lines.push(`AUTOMATED REVIEW raised: ${qa.map(f => `${f.code} (${f.detail})`).join('; ')}.`);
   if (dryRun) lines.push('DRY_RUN is on: nothing real will be published until live writes are armed.');

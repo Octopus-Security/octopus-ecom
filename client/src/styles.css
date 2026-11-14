@@ -102,3 +102,10 @@ a.button { display: inline-block; font: inherit; padding: 6px 12px; border-radiu
 .pgen { display: grid; gap: 8px; max-width: 46rem; margin: 8px 0; } .pgen label { display: flex; flex-direction: column; gap: 2px; } .pgen label.check, .check { flex-direction: row; align-items: center; gap: 6px; }
 .flag-bad { background: var(--neg); color: #fff; } .warn { color: var(--warn); }
 .pcard textarea[readonly] { width: 100%; box-sizing: border-box; font: inherit; }
+
+.studio { display: grid; gap: 8px; }
+.studio-stage { position: relative; max-height: 50vh; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+.studio-stage canvas { display: block; max-width: 100%; height: auto; touch-action: none; }
+.studio button[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+.drawer a.button { min-height: 44px; display: inline-flex; align-items: center; box-sizing: border-box; }
+.studio .banner.error { margin: 0; }

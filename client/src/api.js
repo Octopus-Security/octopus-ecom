@@ -22,10 +22,17 @@ async function upload(url, file) {
 export const api = {
   designPrompt: (id) => call('GET', `/api/products/${id}/design-prompt`),
   uploadDesign: (id, file) => upload(`/api/products/${id}/upload-design`, file),
+  redrawRegion: (id, file, prompt) => upload(`/api/products/${id}/redraw?prompt=${encodeURIComponent(prompt)}`, file),
+  startSticker: (id, blueprint) => call('POST', `/api/products/${id}/sticker`, blueprint ? { blueprint } : {}),
   products: () => call('GET', '/api/products'),
   summary: () => call('GET', '/api/summary'),
   createProduct: (b) => call('POST', '/api/products', b),
-  generateDesign: (id, brief) => call('POST', `/api/products/${id}/generate-design`, brief === undefined ? {} : { brief }),
+  generateDesign: (id, brief, vary) => {
+    const body = {};
+    if (brief !== undefined) body.brief = brief;
+    if (vary) body.vary = vary;
+    return call('POST', `/api/products/${id}/generate-design`, body);
+  },
   draftCopy: (id) => call('POST', `/api/products/${id}/draft-copy`, {}),
   saveCopy: (id, b) => call('PATCH', `/api/products/${id}/copy`, b),
   product: (id) => call('GET', `/api/products/${id}`),
