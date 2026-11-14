@@ -8,6 +8,8 @@ tracked so NET profit is visible.
 It is **not** a tool for copying other sellers' designs or listings. Trend research
 informs themes and keywords only; every design is generated original.
 
+Where the studio work stopped, and what to do on the live shop next: `HANDOFF.md`.
+
 ## Quick start
 
 ```sh
