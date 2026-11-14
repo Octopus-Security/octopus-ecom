@@ -116,7 +116,7 @@ export default function ProductDrawer({ id, onClose, onChanged, askConfirm, onOp
       )}
 
       {latest && canRegen && (
-        <Studio design={latest} productId={p.id} disabled={!!busy} busy={busy}
+        <Studio design={latest} productId={p.id} brief={p.brief} title={p.title} niche={p.niche} disabled={!!busy} busy={busy}
           onUpload={(file) => run('upload', () => api.uploadDesign(id, file))}
           onRedraw={(file, prompt) => run('redraw', () => api.redrawRegion(id, file, prompt))}
           onSticker={makeSticker} />

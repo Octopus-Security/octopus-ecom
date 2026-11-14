@@ -19,7 +19,7 @@ DRY RUN is still ON. Nothing was published to Etsy. Live writes were not armed. 
 
 ## What the card can do now
 
-- Studio tools: Move, Text, Sticker (star, heart, spark, banner), Mark, Eraser. Fonts: Heavy, Sans, Serif, Mono. Undo. Save as print file. Download this view. Save PNG (the file already stored).
+- Studio tools: Move, Text, Sticker (star, heart, spark, banner), Paint, Pick colour, Mark, Eraser, Fuzzy select, Select by colour. Paint and Cover selected use the colour chip and do not spend an image. Mark is only the red overlay; Redraw spends an image. Captions: Suggest from the brief, then Edit and place. Fonts: Heavy, Sans, Serif, Mono. Align center or left. Dark outline. Undo. Save as print file. Download this view. Save PNG (the file already stored).
 - Redraw keeps unmarked pixels. The model rewrites a whole frame; the shop pastes the original back outside the mark and feathers the edge (radius 2). A mark over about 70% is refused. Use Regenerate for that.
 - **Start sticker product** copies the brief, price, and latest PNG onto a new kiss-cut sticker. No image spend.
 - **Create POD product + mockups** also shows on a dry-run stand-in (`stub-` id or estimated cost). While dry run is on, that button fakes the mockups again.

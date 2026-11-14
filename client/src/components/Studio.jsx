@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { selectMask, maskCount, clearMasked } from '../select.js';
+import { suggestCaptions } from '../captions.js';
+import { coverMasked, rgbToHex } from '../cover.js';
 
 const VIEW_MAX = 1024;
 const FONT_STACK = {
@@ -47,12 +49,15 @@ function drawItem(ctx, item, sx) {
   if (item.type === 'text') {
     ctx.font = `${Math.max(8, size)}px ${FONT_STACK[item.font] || FONT_STACK.sans}`;
     ctx.textBaseline = 'middle';
+    ctx.textAlign = item.align === 'center' ? 'center' : 'left';
     ctx.lineJoin = 'round';
     ctx.miterLimit = 2;
-    ctx.lineWidth = Math.max(2 * sx, size / 8);
-    ctx.strokeStyle = '#111';
     ctx.fillStyle = item.color || '#ffffff';
-    ctx.strokeText(item.text, x, y);
+    if (item.outline !== false) {
+      ctx.lineWidth = Math.max(2 * sx, size / 8);
+      ctx.strokeStyle = '#111';
+      ctx.strokeText(item.text, x, y);
+    }
     ctx.fillText(item.text, x, y);
   } else {
     ctx.translate(x, y);
@@ -69,14 +74,15 @@ function drawItem(ctx, item, sx) {
 
 function hitItem(item, x, y) {
   if (item.type === 'text') {
-    const w = Math.max(item.size, item.text.length * item.size * 0.55);
-    return x >= item.x && x <= item.x + w && y >= item.y - item.size * 0.6 && y <= item.y + item.size * 0.6;
+    const w = Math.max(item.size, String(item.text || '').length * item.size * 0.55);
+    const left = item.align === 'center' ? item.x - w / 2 : item.x;
+    return x >= left && x <= left + w && y >= item.y - item.size * 0.6 && y <= item.y + item.size * 0.6;
   }
   const dx = x - item.x; const dy = y - item.y;
   return dx * dx + dy * dy <= item.size * item.size;
 }
 
-export default function Studio({ design, productId, disabled, busy, onUpload, onRedraw, onSticker }) {
+export default function Studio({ design, productId, brief = '', title = '', niche = '', disabled, busy, onUpload, onRedraw, onSticker }) {
   const canvasRef = useRef(null);
   const maskRef = useRef(null);
   const tintRef = useRef(null);
@@ -93,6 +99,9 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
   const brushRef = useRef(28);
   const tolRef = useRef(24);
   const fontRef = useRef('heavy');
+  const alignRef = useRef('center');
+  const outlineRef = useRef(true);
+  const wordsRef = useRef(null);
   const drawing = useRef(null);
   const drag = useRef(null);
   const historyRef = useRef([]);
@@ -109,6 +118,11 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
   const [tolerance, setTolerance] = useState(24);
   const [selCount, setSelCount] = useState(0);
   const [font, setFont] = useState('heavy');
+  const [align, setAlign] = useState('center');
+  const [outline, setOutline] = useState(true);
+  const [ideas, setIdeas] = useState([]);
+  const [placeNote, setPlaceNote] = useState('');
+  const [editing, setEditing] = useState(null);
   const [historyN, setHistoryN] = useState(0);
   const [prompt, setPrompt] = useState('');
   const [localErr, setLocalErr] = useState('');
@@ -124,6 +138,17 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
   brushRef.current = brush;
   tolRef.current = tolerance;
   fontRef.current = font;
+  alignRef.current = align;
+  outlineRef.current = outline;
+
+  useEffect(() => {
+    if (editing === null) return;
+    setItems((list) => list.map((item, i) => (
+      i === editing && item.type === 'text'
+        ? { ...item, text, color, size: Number(size) || item.size, font, align, outline }
+        : item
+    )));
+  }, [editing, text, color, size, font, align, outline]);
 
   useEffect(() => {
     let cancel = false;
@@ -159,6 +184,7 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
     historyRef.current = [];
     setHistoryN(0);
     setItems([]);
+    setEditing(null);
     setSize(Math.max(18, Math.round(img.naturalWidth / 14)));
     setLocalErr('');
   }, [img]);
@@ -216,11 +242,43 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
     ctx.lineJoin = 'round';
     ctx.lineWidth = Number(brushRef.current);
     ctx.strokeStyle = '#fff';
+    ctx.fillStyle = '#fff';
     ctx.globalCompositeOperation = toolRef.current === 'eraser' ? 'destination-out' : 'source-over';
     ctx.beginPath();
-    ctx.moveTo(x0, y0);
-    ctx.lineTo(x1, y1);
-    ctx.stroke();
+    if (x0 === x1 && y0 === y1) {
+      ctx.arc(x0, y0, Number(brushRef.current) / 2, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
+    }
+    paint();
+  }
+
+  function paintStroke(x0, y0, x1, y1) {
+    const work = workRef.current;
+    const image = imgRef.current;
+    const frame = viewRef.current;
+    if (!work || !image || !frame.viewW) return;
+    const ctx = work.getContext('2d');
+    const scale = image.naturalWidth / frame.viewW;
+    const radius = Math.max(1, Number(brushRef.current) * scale / 2);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = colorRef.current;
+    ctx.strokeStyle = colorRef.current;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = radius * 2;
+    ctx.beginPath();
+    if (x0 === x1 && y0 === y1) {
+      ctx.arc(x0, y0, radius, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
+      ctx.stroke();
+    }
     paint();
   }
 
@@ -241,6 +299,7 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
   function undo() {
     const prev = historyRef.current.pop();
     setHistoryN(historyRef.current.length);
+    setEditing(null);
     if (!prev) return;
     setItems(prev.items);
     if (prev.pixels && workRef.current) {
@@ -256,11 +315,39 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
   function onPointerDown(e) {
     if (disabled || !imgRef.current) return;
     e.preventDefault();
-    canvasRef.current.setPointerCapture(e.pointerId);
+    try { canvasRef.current.setPointerCapture(e.pointerId); } catch { /* a pointer without a capture id still paints */ }
     const nat = eventNatural(e);
     const current = toolRef.current;
     if (current === 'fuzzy' || current === 'color') {
       selectAt(nat.x, nat.y, current === 'fuzzy');
+      return;
+    }
+    if (current === 'pick') {
+      const work = workRef.current;
+      if (!work) return;
+      const px = Math.max(0, Math.min(work.width - 1, Math.round(nat.x)));
+      const py = Math.max(0, Math.min(work.height - 1, Math.round(nat.y)));
+      let sample;
+      try {
+        sample = work.getContext('2d', { willReadFrequently: true }).getImageData(px, py, 1, 1).data;
+      } catch {
+        setLocalErr('This picture cannot be sampled.');
+        return;
+      }
+      if (sample[3] < 16) { setLocalErr('That pixel is transparent.'); return; }
+      setColor(rgbToHex(sample[0], sample[1], sample[2]));
+      setLocalErr('');
+      setPlaceNote('Colour taken from the picture. Paint covers with it. Text and stickers use it too.');
+      return;
+    }
+    if (current === 'paint') {
+      const work = workRef.current;
+      if (!work) return;
+      const ctx = work.getContext('2d', { willReadFrequently: true });
+      const before = ctx.getImageData(0, 0, work.width, work.height);
+      drawing.current = { kind: 'paint', x: nat.x, y: nat.y, before };
+      setEditing(null);
+      paintStroke(nat.x, nat.y, nat.x, nat.y);
       return;
     }
     if (current === 'brush' || current === 'eraser') {
@@ -276,11 +363,32 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
       return;
     }
     if (current === 'text') {
+      const placed = itemsRef.current;
+      for (let i = placed.length - 1; i >= 0; i--) {
+        if (placed[i].type === 'text' && hitItem(placed[i], nat.x, nat.y)) {
+          const item = placed[i];
+          setEditing(i);
+          setText(item.text);
+          setColor(item.color || '#ffffff');
+          setSize(item.size);
+          setFont(item.font || 'heavy');
+          setAlign(item.align === 'center' ? 'center' : 'left');
+          setOutline(item.outline !== false);
+          setLocalErr('');
+          setPlaceNote('This caption is live. Change the words, font, colour, size, alignment, or outline. Click empty picture to place another.');
+          return;
+        }
+      }
       const words = textRef.current.trim();
       if (!words) { setLocalErr('Type the words first.'); return; }
+      setEditing(null);
       setLocalErr('');
       remember();
-      setItems((list) => [...list, { type: 'text', text: words, color: colorRef.current, size: Number(sizeRef.current), font: fontRef.current, x: nat.x, y: nat.y }]);
+      setItems((list) => [...list, {
+        type: 'text', text: words, color: colorRef.current, size: Number(sizeRef.current),
+        font: fontRef.current, align: alignRef.current, outline: outlineRef.current, x: nat.x, y: nat.y,
+      }]);
+      setPlaceNote('Placed. Drag it with Move, or click it with Text to keep editing.');
       return;
     }
     setLocalErr('');
@@ -293,8 +401,13 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
     if (!drawing.current && !drag.current) return;
     const nat = eventNatural(e);
     if (drawing.current) {
-      stroke(drawing.current.x, drawing.current.y, nat.vx, nat.vy);
-      drawing.current = { x: nat.vx, y: nat.vy };
+      if (drawing.current.kind === 'paint') {
+        paintStroke(drawing.current.x, drawing.current.y, nat.x, nat.y);
+        drawing.current = { ...drawing.current, x: nat.x, y: nat.y };
+      } else {
+        stroke(drawing.current.x, drawing.current.y, nat.vx, nat.vy);
+        drawing.current = { x: nat.vx, y: nat.vy };
+      }
       return;
     }
     const { i, dx, dy } = drag.current;
@@ -302,7 +415,11 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
     setItems((list) => list.map((item, idx) => (idx === i ? { ...item, x: nat.x - dx, y: nat.y - dy } : item)));
   }
 
-  function onPointerUp() { drawing.current = null; drag.current = null; }
+  function onPointerUp() {
+    if (drawing.current && drawing.current.kind === 'paint' && drawing.current.before) remember(drawing.current.before);
+    drawing.current = null;
+    drag.current = null;
+  }
 
   function clearPreview() {
     const mask = maskRef.current;
@@ -384,6 +501,43 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
     paint();
   }
 
+  function coverSelected() {
+    const sel = selRef.current;
+    const work = workRef.current;
+    if (!work || !sel || maskCount(sel) === 0) { setLocalErr('Select the letters or the patch first.'); return; }
+    const ctx = work.getContext('2d', { willReadFrequently: true });
+    const before = ctx.getImageData(0, 0, work.width, work.height);
+    const next = ctx.getImageData(0, 0, work.width, work.height);
+    const n = coverMasked(next.data, sel, colorRef.current);
+    if (!n) { setLocalErr('Nothing was selected.'); return; }
+    remember(before);
+    ctx.putImageData(next, 0, 0);
+    selRef.current = null;
+    setSelCount(0);
+    clearPreview();
+    setLocalErr('');
+    setPlaceNote('Covered with the chosen colour. Save as print file to keep it. This did not spend an image.');
+    paint();
+  }
+
+  function editAndPlace(idea) {
+    const words = String(idea || '').trim();
+    if (!words) { setLocalErr('Type a caption first.'); return; }
+    setEditing(null);
+    setText(words);
+    setTool('text');
+    setLocalErr('');
+    setPlaceNote('Edit the words, font, colour, size, or alignment, then click the picture to place them. Move drags a caption after that.');
+    requestAnimationFrame(() => { if (wordsRef.current) wordsRef.current.focus(); });
+  }
+
+  function suggest() {
+    const next = suggestCaptions({ brief, title, niche });
+    setIdeas(next);
+    setLocalErr('');
+    setPlaceNote(next.length ? 'Pick Edit and place on a line, or type your own. Nothing is placed until you click the picture.' : 'No caption ideas.');
+  }
+
   async function flatten() {
     const image = imgRef.current;
     if (!image) return null;
@@ -422,7 +576,7 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
     let marked = 0;
     for (let i = 0; i < src.length; i += 4) if (src[i] > 127 && src[i + 3] > 127) marked++;
     const total = mask.width * mask.height;
-    if (marked === 0) { setLocalErr('Paint the area to redraw first.'); return null; }
+    if (marked === 0) { setLocalErr('Mark the area to redraw first.'); return null; }
     if (marked / total > 0.7) { setLocalErr('That mark covers most of the image. Use Regenerate for the whole design.'); return null; }
     const off = document.createElement('canvas');
     off.width = image.naturalWidth;
@@ -458,12 +612,20 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
   }
 
   const locked = disabled || !img;
-  const tools = [['move', 'Move'], ['text', 'Text'], ['stamp', 'Sticker'], ['brush', 'Mark'], ['eraser', 'Eraser'], ['fuzzy', 'Fuzzy select'], ['color', 'Select by colour']];
+  const tools = [
+    ['move', 'Move'], ['text', 'Text'], ['stamp', 'Sticker'], ['paint', 'Paint'], ['pick', 'Pick colour'],
+    ['brush', 'Mark'], ['eraser', 'Eraser'], ['fuzzy', 'Fuzzy select'], ['color', 'Select by colour'],
+  ];
+  const toolHint = {
+    paint: 'Cover pixels in the colour below. This does not spend an image.',
+    pick: 'Click the picture to copy a colour into the chip.',
+    brush: 'This is the red overlay. It does not use the colour. Redraw spends an image.',
+  };
 
   return (
     <section className="studio" aria-label="Studio">
       <h4>Studio</h4>
-      <div className="muted small">Unmarked pixels stay as stored. Marked pixels are redrawn by Nous klein edit and cost a real image even while dry run is on. Fuzzy select and Select by colour do not spend an image: click the background, then Remove selected. Fuzzy stays in one patch. Select by colour grabs every similar pixel. Text and stickers are not part of a redraw until you save them. A sticker product uses the latest saved file.</div>
+      <div className="muted small">Paint and Cover selected use the colour chip and do not spend an image. Pick colour reads a pixel from the picture. Mark is the red overlay for Redraw, which spends an image even while dry run is on. Save as print file to keep paint and captions. A redraw uses the saved file.</div>
       {design.upscaleMethod && <div className="warn small">Letters and stickers you add here stay sharp. The picture was enlarged from {design.nativeWidth}×{design.nativeHeight} and will not get sharper.</div>}
       <div className="studio-stage">
         <canvas ref={canvasRef} width={view.viewW} height={view.viewH} aria-label="Design canvas"
@@ -474,19 +636,53 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
           <button key={id} type="button" className="ghost" aria-pressed={tool === id} disabled={locked} onClick={() => { setTool(id); setLocalErr(''); }}>{label}</button>
         ))}
       </div>
+      {toolHint[tool] && <div className="warn small" role="status">{toolHint[tool]}</div>}
       <div className="row">
-        <label className="grow">Words<input value={text} maxLength={80} disabled={locked} onChange={(e) => setText(e.target.value)} /></label>
-        <label>Colour<input type="color" value={color} disabled={locked} onChange={(e) => setColor(e.target.value)} /></label>
-        <label>Size<input type="number" min="12" max="800" value={size} disabled={locked} onChange={(e) => setSize(Number(e.target.value) || 12)} /></label>
-        <label>Font
-          <select value={font} disabled={locked} onChange={(e) => setFont(e.target.value)}>
-            <option value="heavy">Heavy</option>
-            <option value="sans">Sans</option>
-            <option value="serif">Serif</option>
-            <option value="mono">Mono</option>
-          </select>
+        <label className="colour-label">Colour
+          <span className="colour-chip" style={{ background: color }} />
+          <input type="color" value={color} disabled={locked} onChange={(e) => setColor(e.target.value)} />
         </label>
       </div>
+      <section className="studio-captions" aria-label="Captions">
+        <h5>Captions</h5>
+        <div className="muted small">Type your own, or suggest lines from the brief. Edit and place fills the words. Change spelling, font, colour, size, or alignment, then click the picture. Click a placed caption with Text to keep editing it. Move drags it.</div>
+        <div className="row">
+          <label className="grow">Your caption<input ref={wordsRef} value={text} maxLength={80} disabled={locked} onChange={(e) => setText(e.target.value)} /></label>
+          <button type="button" className="ghost" disabled={locked || !text.trim()} onClick={() => editAndPlace(text)}>Edit and place</button>
+          <button type="button" className="ghost" disabled={locked} onClick={suggest}>Suggest from the brief</button>
+        </div>
+        {ideas.length > 0 && (
+          <ul className="caption-ideas">
+            {ideas.map((idea) => (
+              <li key={idea}>
+                <span>{idea}</span>
+                <button type="button" className="ghost" disabled={locked} onClick={() => editAndPlace(idea)}>Edit and place</button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="row">
+          <label>Size<input type="number" min="12" max="800" value={size} disabled={locked} onChange={(e) => setSize(Number(e.target.value) || 12)} /></label>
+          <label>Font
+            <select value={font} disabled={locked} onChange={(e) => setFont(e.target.value)}>
+              <option value="heavy">Heavy</option>
+              <option value="sans">Sans</option>
+              <option value="serif">Serif</option>
+              <option value="mono">Mono</option>
+            </select>
+          </label>
+          <label>Align
+            <select value={align} disabled={locked} onChange={(e) => setAlign(e.target.value)}>
+              <option value="center">Center</option>
+              <option value="left">Left</option>
+            </select>
+          </label>
+          <label className="check">Dark outline
+            <input type="checkbox" checked={outline} disabled={locked} onChange={(e) => setOutline(e.target.checked)} />
+          </label>
+        </div>
+        {placeNote && <div className="muted small" role="status">{placeNote}</div>}
+      </section>
       <div className="row">
         <label>Stamp
           <select value={kind} disabled={locked} onChange={(e) => setKind(e.target.value)}>
@@ -502,9 +698,10 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
         </label>
         <span className="muted small">{tolerance}</span>
         <button type="button" className="ghost" disabled={locked || historyN === 0} onClick={undo}>Undo</button>
-        <button type="button" className="ghost" disabled={locked || items.length === 0} onClick={() => { remember(); setItems((list) => list.slice(0, -1)); }}>Remove last</button>
+        <button type="button" className="ghost" disabled={locked || items.length === 0} onClick={() => { setEditing(null); remember(); setItems((list) => list.slice(0, -1)); }}>Remove last</button>
         <button type="button" className="ghost" disabled={locked} onClick={clearMarks}>Clear marks</button>
-        <button type="button" disabled={locked || selCount === 0} onClick={removeSelected}>Remove selected</button>
+        <button type="button" disabled={locked || selCount === 0} onClick={coverSelected}>Cover selected</button>
+        <button type="button" className="ghost" disabled={locked || selCount === 0} onClick={removeSelected}>Remove selected</button>
       </div>
       <div className="row">
         <button type="button" disabled={locked} onClick={savePrint}>{busy === 'upload' ? 'Saving...' : 'Save as print file'}</button>

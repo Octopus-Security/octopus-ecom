@@ -109,5 +109,13 @@ a.button { display: inline-block; font: inherit; padding: 6px 12px; border-radiu
 .studio-stage { position: relative; max-height: 50vh; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
 .studio-stage canvas { display: block; max-width: 100%; height: auto; touch-action: none; }
 .studio button[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 1px; }
+.studio h5 { margin: 0; font-size: 1rem; }
+.colour-label { display: inline-flex; align-items: center; gap: 8px; }
+.colour-chip { width: 44px; height: 44px; border-radius: 6px; border: 1px solid var(--line); box-sizing: border-box; }
+.studio input[type="color"] { width: 44px; height: 44px; padding: 0; border: 1px solid var(--line); background: transparent; }
+.studio-captions { display: grid; gap: 8px; }
+.caption-ideas { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.caption-ideas li { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.caption-ideas li span { flex: 1 1 12rem; min-width: 0; overflow-wrap: break-word; }
 .drawer a.button { min-height: 44px; display: inline-flex; align-items: center; box-sizing: border-box; }
 .studio .banner.error { margin: 0; }
