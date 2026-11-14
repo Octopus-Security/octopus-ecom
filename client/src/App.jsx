@@ -16,9 +16,11 @@ import BatchesView from './components/BatchesView.jsx';
 import PlaybooksView from './components/playbooks/PlaybooksView.jsx';
 import PlanChat from './components/PlanChat.jsx';
 import ProposalsView from './components/ProposalsView.jsx';
+import NextSale from './components/NextSale.jsx';
 
 export default function App() {
   const [summary, setSummary] = useState(null);
+  const [nextSale, setNextSale] = useState(null);
   const [board, setBoard] = useState(null);
   const [error, setError] = useState('');
   const [drawer, setDrawer] = useState(false);
@@ -35,8 +37,8 @@ export default function App() {
 
   const refresh = useCallback(async () => {
     try {
-      const [s, b] = await Promise.all([api.summary(), api.products()]);
-      setSummary(s); setBoard(b); setError('');
+      const [s, b, n] = await Promise.all([api.summary(), api.products(), api.nextSale().catch(() => null)]);
+      setSummary(s); setBoard(b); setNextSale(n); setError('');
     } catch (e) { setError(e.message); }
   }, []);
 
@@ -71,6 +73,12 @@ export default function App() {
         onOpenPlaybook={(id, productId) => { setPb({ id, productId: productId || 0 }); setView('playbooks'); }} />
       {error && <div className="banner error" role="alert">{error}</div>}
       {flash && <div className="banner warn-banner" role="status">{flash} <button className="ghost" onClick={() => setFlash('')}>Dismiss</button></div>}
+      <NextSale step={nextSale} onOpen={(step) => {
+        if (step.open === 'settings') setDrawer(true);
+        else if (step.open === 'composer') setComposer(true);
+        else if (step.open === 'product' && step.productId) setOpenId(step.productId);
+        else if (step.open === 'sales') setView('sales');
+      }} />
       {view === 'board' && <Board board={board} onOpen={setOpenId} />}
       {view === 'batches' && <BatchesView focusId={batchFocus} onOpenProduct={setOpenId} onChanged={refresh} />}
       {view === 'proposals' && <ProposalsView onOpenProduct={setOpenId} onChanged={refresh} askConfirm={setConfirm} />}

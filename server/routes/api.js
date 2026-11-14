@@ -10,6 +10,7 @@ const { KEY_NAMES } = require('../keystore');
 const { pasteError, makeNousLogin } = require('../nous-portal');
 const feeSchedule = require('../domain/fee-schedule');
 const fees = require('../domain/fees');
+const { nextSale, loadNextSale } = require('../domain/next-sale');
 
 /** Image type from magic bytes only. */
 function sniffImage(b) {
@@ -199,6 +200,11 @@ function router(deps) {
   // GET /api/summary — spend, revenue, NET, daily cap, and what is stubbed.
   r.get('/summary', wrap(async (_req, res) => {
     res.json({ ok: true, dryRun: dryRun.isOn(), ...spend.summary(), adapters: adapters.describe(), llm: llm.describe() });
+  }));
+
+  // GET /api/next-sale — one next owner step. Reads credentials, the store row, and products. Writes nothing.
+  r.get('/next-sale', wrap(async (_req, res) => {
+    res.json({ ok: true, ...nextSale(loadNextSale({ db, credentials, dryRun, settings })) });
   }));
 
   // Authenticated image route: files live under DATA_DIR/images.

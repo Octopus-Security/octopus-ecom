@@ -26,6 +26,7 @@ export const api = {
   startSticker: (id, blueprint) => call('POST', `/api/products/${id}/sticker`, blueprint ? { blueprint } : {}),
   products: () => call('GET', '/api/products'),
   summary: () => call('GET', '/api/summary'),
+  nextSale: () => call('GET', '/api/next-sale'),
   createProduct: (b) => call('POST', '/api/products', b),
   generateDesign: (id, brief, vary) => {
     const body = {};

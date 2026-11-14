@@ -81,6 +81,8 @@ textarea { font: inherit; padding: 6px 8px; border-radius: 6px; border: 1px soli
 .econ { border-collapse: collapse; font-size: .85rem; } .econ td { padding: 1px 10px 1px 0; } .econ td:last-child { text-align: right; }
 input.inline { width: 8rem; margin-left: 6px; }
 .banner.warn-banner { background: color-mix(in srgb, var(--warn, #d9a400) 18%, transparent); border: 1px solid var(--warn, #d9a400); padding: 8px 12px; margin: 8px 0; border-radius: 6px; }
+.banner.next-sale { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: color-mix(in srgb, var(--accent) 14%, transparent); border: 1px solid var(--accent); padding: 8px 12px; margin: 8px 16px; border-radius: 6px; }
+.banner.next-sale p { margin: 0; flex: 1 1 16rem; min-width: 0; overflow-wrap: break-word; }
 .scroll-x { overflow-x: auto; }
 img, table { max-width: 100%; }
 

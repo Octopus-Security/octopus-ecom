@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
+import { selectMask, maskCount, clearMasked } from '../select.js';
 
 const VIEW_MAX = 1024;
 const FONT_STACK = {
@@ -80,6 +81,8 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
   const maskRef = useRef(null);
   const tintRef = useRef(null);
   const imgRef = useRef(null);
+  const workRef = useRef(null);
+  const selRef = useRef(null);
   const itemsRef = useRef([]);
   const viewRef = useRef({ viewW: 1, viewH: 1 });
   const toolRef = useRef('move');
@@ -88,6 +91,7 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
   const sizeRef = useRef(64);
   const kindRef = useRef('star');
   const brushRef = useRef(28);
+  const tolRef = useRef(24);
   const fontRef = useRef('heavy');
   const drawing = useRef(null);
   const drag = useRef(null);
@@ -102,6 +106,8 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
   const [size, setSize] = useState(64);
   const [kind, setKind] = useState('star');
   const [brush, setBrush] = useState(28);
+  const [tolerance, setTolerance] = useState(24);
+  const [selCount, setSelCount] = useState(0);
   const [font, setFont] = useState('heavy');
   const [historyN, setHistoryN] = useState(0);
   const [prompt, setPrompt] = useState('');
@@ -116,6 +122,7 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
   sizeRef.current = size;
   kindRef.current = kind;
   brushRef.current = brush;
+  tolRef.current = tolerance;
   fontRef.current = font;
 
   useEffect(() => {
@@ -140,6 +147,13 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
     tint.width = viewW; tint.height = viewH;
     tintRef.current = tint;
     imgRef.current = img;
+    const work = document.createElement('canvas');
+    work.width = img.naturalWidth;
+    work.height = img.naturalHeight;
+    work.getContext('2d').drawImage(img, 0, 0);
+    workRef.current = work;
+    selRef.current = null;
+    setSelCount(0);
     viewRef.current = { viewW, viewH };
     setView({ viewW, viewH });
     historyRef.current = [];
@@ -167,7 +181,7 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
     if (!canvas || !image || !frame) return;
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, frame.viewW, frame.viewH);
-    ctx.drawImage(image, 0, 0, frame.viewW, frame.viewH);
+    ctx.drawImage(workRef.current || image, 0, 0, frame.viewW, frame.viewH);
     const sx = frame.viewW / image.naturalWidth;
     for (const item of itemsRef.current) drawItem(ctx, item, sx);
     const mask = maskRef.current;
@@ -210,8 +224,16 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
     paint();
   }
 
-  function remember() {
-    historyRef.current.push(itemsRef.current.map((item) => ({ ...item })));
+  function remember(pixels) {
+    const entry = { items: itemsRef.current.map((item) => ({ ...item })) };
+    if (pixels) entry.pixels = pixels;
+    historyRef.current.push(entry);
+    let kept = 0;
+    for (let i = historyRef.current.length - 1; i >= 0; i--) {
+      if (!historyRef.current[i].pixels) continue;
+      kept += 1;
+      if (kept > 2) historyRef.current[i].pixels = null;
+    }
     if (historyRef.current.length > 30) historyRef.current.shift();
     setHistoryN(historyRef.current.length);
   }
@@ -219,7 +241,16 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
   function undo() {
     const prev = historyRef.current.pop();
     setHistoryN(historyRef.current.length);
-    if (prev) setItems(prev);
+    if (!prev) return;
+    setItems(prev.items);
+    if (prev.pixels && workRef.current) {
+      workRef.current.getContext('2d').putImageData(prev.pixels, 0, 0);
+      selRef.current = null;
+      setSelCount(0);
+      const mask = maskRef.current;
+      const frame = viewRef.current;
+      if (mask) mask.getContext('2d').clearRect(0, 0, frame.viewW, frame.viewH);
+    }
   }
 
   function onPointerDown(e) {
@@ -228,6 +259,10 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
     canvasRef.current.setPointerCapture(e.pointerId);
     const nat = eventNatural(e);
     const current = toolRef.current;
+    if (current === 'fuzzy' || current === 'color') {
+      selectAt(nat.x, nat.y, current === 'fuzzy');
+      return;
+    }
     if (current === 'brush' || current === 'eraser') {
       drawing.current = { x: nat.vx, y: nat.vy };
       stroke(nat.vx, nat.vy, nat.vx, nat.vy);
@@ -269,10 +304,82 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
 
   function onPointerUp() { drawing.current = null; drag.current = null; }
 
-  function clearMarks() {
+  function clearPreview() {
     const mask = maskRef.current;
     const frame = viewRef.current;
     if (mask) mask.getContext('2d').clearRect(0, 0, frame.viewW, frame.viewH);
+  }
+
+  function showSelection(sel, natW, natH) {
+    const mask = maskRef.current;
+    const frame = viewRef.current;
+    if (!mask || !frame) return;
+    const ctx = mask.getContext('2d');
+    const img = ctx.createImageData(frame.viewW, frame.viewH);
+    const d = img.data;
+    for (let y = 0; y < frame.viewH; y++) {
+      const sy = Math.min(natH - 1, (y * natH / frame.viewH) | 0);
+      for (let x = 0; x < frame.viewW; x++) {
+        const sx = Math.min(natW - 1, (x * natW / frame.viewW) | 0);
+        if (!sel[sy * natW + sx]) continue;
+        const i = (y * frame.viewW + x) * 4;
+        d[i] = 255;
+        d[i + 3] = 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    paint();
+  }
+
+  function selectAt(x, y, contiguous) {
+    const work = workRef.current;
+    if (!work) return;
+    let snap;
+    try {
+      snap = work.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, work.width, work.height);
+    } catch {
+      setLocalErr('This picture cannot be read for a selection.');
+      return;
+    }
+    const px = Math.round(x);
+    const py = Math.round(y);
+    const sel = selectMask(snap.data, work.width, work.height, px, py, tolRef.current, contiguous);
+    const n = maskCount(sel);
+    selRef.current = n ? sel : null;
+    setSelCount(n);
+    if (!n) {
+      const i = (Math.max(0, Math.min(work.height - 1, py)) * work.width + Math.max(0, Math.min(work.width - 1, px))) * 4;
+      setLocalErr(snap.data[i + 3] < 16 ? 'That pixel is already transparent.' : 'Nothing matched. Raise the tolerance.');
+      clearPreview();
+      paint();
+      return;
+    }
+    setLocalErr('');
+    showSelection(sel, work.width, work.height);
+  }
+
+  function clearMarks() {
+    clearPreview();
+    selRef.current = null;
+    setSelCount(0);
+    setLocalErr('');
+    paint();
+  }
+
+  function removeSelected() {
+    const sel = selRef.current;
+    const work = workRef.current;
+    if (!work || !sel || maskCount(sel) === 0) { setLocalErr('Select the background first.'); return; }
+    const ctx = work.getContext('2d', { willReadFrequently: true });
+    const before = ctx.getImageData(0, 0, work.width, work.height);
+    const next = ctx.getImageData(0, 0, work.width, work.height);
+    const n = clearMasked(next.data, sel);
+    if (!n) { setLocalErr('Those pixels are already transparent.'); return; }
+    remember(before);
+    ctx.putImageData(next, 0, 0);
+    selRef.current = null;
+    setSelCount(0);
+    clearPreview();
     setLocalErr('');
     paint();
   }
@@ -284,7 +391,7 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
     off.width = image.naturalWidth;
     off.height = image.naturalHeight;
     const ctx = off.getContext('2d');
-    ctx.drawImage(image, 0, 0);
+    ctx.drawImage(workRef.current || image, 0, 0);
     for (const item of itemsRef.current) drawItem(ctx, item, 1);
     return new Promise((resolve) => off.toBlob((blob) => resolve(blob), 'image/png'));
   }
@@ -351,12 +458,12 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
   }
 
   const locked = disabled || !img;
-  const tools = [['move', 'Move'], ['text', 'Text'], ['stamp', 'Sticker'], ['brush', 'Mark'], ['eraser', 'Eraser']];
+  const tools = [['move', 'Move'], ['text', 'Text'], ['stamp', 'Sticker'], ['brush', 'Mark'], ['eraser', 'Eraser'], ['fuzzy', 'Fuzzy select'], ['color', 'Select by colour']];
 
   return (
     <section className="studio" aria-label="Studio">
       <h4>Studio</h4>
-      <div className="muted small">Unmarked pixels stay as stored. Marked pixels are redrawn by Nous klein edit and cost a real image even while dry run is on. Text and stickers are not part of a redraw until you save them. A sticker product uses the latest saved file.</div>
+      <div className="muted small">Unmarked pixels stay as stored. Marked pixels are redrawn by Nous klein edit and cost a real image even while dry run is on. Fuzzy select and Select by colour do not spend an image: click the background, then Remove selected. Fuzzy stays in one patch. Select by colour grabs every similar pixel. Text and stickers are not part of a redraw until you save them. A sticker product uses the latest saved file.</div>
       {design.upscaleMethod && <div className="warn small">Letters and stickers you add here stay sharp. The picture was enlarged from {design.nativeWidth}×{design.nativeHeight} and will not get sharper.</div>}
       <div className="studio-stage">
         <canvas ref={canvasRef} width={view.viewW} height={view.viewH} aria-label="Design canvas"
@@ -390,9 +497,14 @@ export default function Studio({ design, productId, disabled, busy, onUpload, on
           </select>
         </label>
         <label className="grow">Brush<input type="range" min="8" max="96" value={brush} disabled={locked} onChange={(e) => setBrush(Number(e.target.value))} /></label>
+        <label className="grow">Tolerance
+          <input type="range" min="0" max="80" value={tolerance} disabled={locked} aria-valuetext={String(tolerance)} onChange={(e) => setTolerance(Number(e.target.value))} />
+        </label>
+        <span className="muted small">{tolerance}</span>
         <button type="button" className="ghost" disabled={locked || historyN === 0} onClick={undo}>Undo</button>
         <button type="button" className="ghost" disabled={locked || items.length === 0} onClick={() => { remember(); setItems((list) => list.slice(0, -1)); }}>Remove last</button>
         <button type="button" className="ghost" disabled={locked} onClick={clearMarks}>Clear marks</button>
+        <button type="button" disabled={locked || selCount === 0} onClick={removeSelected}>Remove selected</button>
       </div>
       <div className="row">
         <button type="button" disabled={locked} onClick={savePrint}>{busy === 'upload' ? 'Saving...' : 'Save as print file'}</button>

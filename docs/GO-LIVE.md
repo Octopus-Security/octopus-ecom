@@ -4,6 +4,10 @@ One ordered list. Steps marked **OWNER** need an account or a decision only the 
 live Etsy shop or a live Printify account yet (see `ARCHITECTURE.md`, "Not yet built"); every "verify" line is what the app is
 *expected* to show, and the first live run is the real test. Do one product end to end before you batch.
 
+The signed-in board shows one **Next sale** card (`GET /api/next-sale`). It reads credentials, the Etsy connection, and the furthest
+product, and names the single next step. It never arms live writes, never publishes, and never spends on an image. The Printify shop-link
+check still happens on Publish, not on this card.
+
 ## What "the automatic shop maker" is, and is not
 
 Automatic: *Run batch* (a niche and a count, max 25) or an approved **Proposal** takes a product from idea to **PENDING_APPROVAL**:
